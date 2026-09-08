@@ -737,6 +737,9 @@
       <button class="admin-menu-btn" id="btnSendDailyDigest">
         📧 Broadcast Today's Digest
       </button>
+      <button class="admin-menu-btn" id="btnSidebarBackendSettings">
+        ⚙️ Backend &amp; Sheets Link
+      </button>
     </div>
 
     <div class="sidebar-section">
@@ -1025,6 +1028,12 @@
         </table>
       </div>
     </div>
+
+    <div class="dialog-footer">
+      <button class="btn btn-ghost" data-close="userMgmtModal">Done</button>
+    </div>
+  </div>
+</div>
 
 <!-- ========================================================== -->
 <!-- MODAL: BACKEND CONNECTION SETTINGS -->
@@ -1673,16 +1682,37 @@
     };
 
     // Backend Connection Settings Handlers
-    $('#btnOpenSettings').onclick = openBackendSettings;
-    $('#btnBannerSetup').onclick = openBackendSettings;
-    $('#btnTestBackendConnection').onclick = () => testBackendConnection();
-    $('#btnSaveBackendUrl').onclick = saveBackendUrl;
+    if ($('#btnOpenSettings')) $('#btnOpenSettings').onclick = openBackendSettings;
+    if ($('#btnBannerSetup')) $('#btnBannerSetup').onclick = openBackendSettings;
+    if ($('#btnSidebarBackendSettings')) $('#btnSidebarBackendSettings').onclick = openBackendSettings;
+    if ($('#backendNoticeBanner')) {
+      $('#backendNoticeBanner').onclick = e => {
+        if (e.target !== $('#btnBannerSetup')) openBackendSettings();
+      };
+      $('#backendNoticeBanner').style.cursor = 'pointer';
+    }
+    if ($('#btnTestBackendConnection')) $('#btnTestBackendConnection').onclick = () => testBackendConnection();
+    if ($('#btnSaveBackendUrl')) $('#btnSaveBackendUrl').onclick = saveBackendUrl;
 
     $$('[data-close]').forEach(btn => {
       btn.onclick = () => {
         const id = btn.dataset.close;
         $(`#${id}`).classList.remove('open');
       };
+    });
+
+    $$('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', e => {
+        if (e.target === overlay) {
+          overlay.classList.remove('open');
+        }
+      });
+    });
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        $$('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+      }
     });
   }
 
