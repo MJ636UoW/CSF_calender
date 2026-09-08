@@ -1,114 +1,111 @@
-# 📅 CSF Event Planning & Approval System (Live Google Web App)
+# 📅 CSF Event Planning & Approval System (Google Sheets + Vercel)
 
-A collaborative event planning and institutional calendar web application powered by **Google Sheets** and **Google Apps Script**.
-
----
-
-## 🌟 Key Features
-
-- **Google Account Authentication**: Every user logs in seamlessly with their verified Google account.
-- **Strict Role-Based Access Control**:
-  - **`Admin`**: Approves/rejects proposed events, sets decision notes, manages user roles (`Admin` vs `Member`), and triggers notifications.
-  - **`Member`**: Can propose events per day or in future dates, view the calendar, access event guidelines, join Google Meet calls, and participate in discussion threads.
-  - **Only Admins can assign roles**: Members cannot alter roles or approve events.
-- **Approval-Gated Visibility**:
-  - Only events approved by an Admin become live on the public schedule for all members.
-  - Members can see their own submissions marked as *Pending* until approved.
-- **📹 "Arrange Google Meet" Video Integration**:
-  - Check "Arrange Google Meet" when proposing an event.
-  - Upon approval, a Google Meet video conference link is linked with a one-click **"Join Google Meet"** button.
-- **Event Guidelines & Descriptions**:
-  - Full details including event guide, prerequisites, time slots, venue, speaker, and coordinators.
-- **⏰ Daily Event Email Notifications**:
-  - An automated morning email digest (scheduled daily at 8:00 AM) sent to all registered members detailing all events happening today, their venues, times, and Google Meet links.
-  - Admins can also trigger the digest on-demand from the dashboard.
+A live, collaborative event planning and institutional calendar web application with **Google Account Login**, **Admin/Member Roles**, **Google Meet Video Integration**, and **Automated Daily Email Notifications**.
 
 ---
 
-## ❓ Where is "Extensions" in Google Sheets?
+## 🚀 Live Deployment Architecture
 
-In Google Sheets on your computer:
-1. Look at the top menu bar directly beneath the spreadsheet title:
-   `File` | `Edit` | `View` | `Insert` | `Format` | `Data` | `Tools` | **`Extensions`** | `Help`
-2. Click **`Extensions`** → click **`Apps Script`**.
+This project uses **Vercel** for fast global web hosting and **Google Apps Script** as the secure serverless backend connected to your Google Sheet and Google Calendar.
 
-> **Note**: If you uploaded an Excel `.xlsx` file to Google Drive and simply opened it in preview, the `Extensions` menu might not show. Make sure to click **"Open with Google Sheets"** (or in the sheet click `File` → `Save as Google Sheets`).
+```
+[ User in Browser / Vercel ]
+          │
+          ├── (1) Google Identity Services (Sign in with Google Account)
+          │
+          └── (2) Fetch API requests
+                   │
+                   ▼
+       [ Google Apps Script Web App ]
+                   │
+         ┌─────────┴─────────┐
+         ▼                   ▼
+  [ Google Sheet ]   [ Google Calendar / Meet ]
+   - Events           - Sync approved events
+   - Users & Roles    - Auto Google Meet link
+   - Comments         - Daily 8 AM morning digest
+```
 
 ---
 
-## 🚀 Live Deployment Guide (Step-by-Step)
+## ⚡ Quick Deployment Guide (Vercel + Google Apps Script)
 
-### Step 1: Upload Template to Google Drive
+### Step 1: Set Up Google Sheet & Apps Script Backend
 1. Go to [Google Drive](https://drive.google.com).
 2. Upload `CSF_Event_Management_Template.xlsx`.
-3. Right-click the uploaded file → **Open with** → **Google Sheets** (or File → Save as Google Sheets).
-
-### Step 2: Open Apps Script Editor
-1. In your newly created Google Sheet, click **Extensions** in the top menu → **Apps Script**.
-2. Rename the project to `CSF Event Portal`.
-
-### Step 3: Copy Code Files
-1. **`Code.gs`**:
-   - Open `Code.gs` in Apps Script, delete any default code, and copy-paste the entire contents of [`Code.gs`](./Code.gs).
-2. **`Index.html`**:
-   - Click the **+** (Add a file) icon next to Files → select **HTML**.
-   - Name it `Index` (Apps Script will save it as `Index.html`).
-   - Delete any default HTML and copy-paste the entire contents of [`Index.html`](./Index.html).
-3. **`appsscript.json` (Manifest)**:
-   - In Apps Script, click the **Gear Icon** (Project Settings) on the left sidebar.
-   - Check the box: **"Show 'appsscript.json' manifest file in editor"**.
-   - Return to the **Editor** (`< >` icon on left sidebar).
-   - Click `appsscript.json` and replace its content with [`appsscript.json`](./appsscript.json).
-
-### Step 4: Run Initial Setup (One Click)
-1. At the top of the Apps Script editor, select the function **`setupProject`** in the dropdown.
-2. Click **Run**.
-3. Google will prompt: *"Authorization Required"*.
-   - Click **Review Permissions**.
-   - Choose your Google account.
-   - Click **Advanced** → **Go to CSF Event Portal (unsafe)**.
-   - Click **Allow** (authorizes Spreadsheet, Calendar, and Mail services).
-4. The script will automatically verify all sheets, configure headers, make you the first **`Admin`**, and set up the automated daily morning notification trigger!
-
-### Step 5: Deploy as Live Web App
-1. Click the blue **Deploy** button at the top right → **New deployment**.
-2. Click the gear icon next to "Select type" → choose **Web app**.
-3. Configure the deployment settings:
-   - **Description**: `Version 1.0 - Live CSF Calendar`
-   - **Execute as**: `User accessing the web app` (or `Me` if sharing without giving spreadsheet permissions).
-   - **Who has access**: `Anyone with Google Account` (or `Anyone within your organization` for Google Workspace).
-4. Click **Deploy**.
-5. Copy the **Web App URL** (ends in `/exec`).
-6. Share this URL with your team, faculty, and students!
+3. Right-click the file → **Open with** → **Google Sheets** (or `File` → `Save as Google Sheets`).
+4. In the top menu, click **`Extensions`** → **`Apps Script`**.
+   *(If you don't see Extensions, make sure the file is saved as a Google Sheet, not Excel preview!)*
+5. Replace `Code.gs` with the content of [`Code.gs`](./Code.gs).
+6. In **Project Settings** (gear icon), check *"Show 'appsscript.json' manifest file in editor"*, then replace [`appsscript.json`](./appsscript.json).
+7. Select **`setupProject`** in the top dropdown and click **Run** (Grant permissions when prompted).
+8. Click the blue **Deploy** button → **New deployment**:
+   - Select type: **Web app**
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+9. Click **Deploy** and **copy your Web App URL** (ends in `/exec`).
 
 ---
 
-## 👥 Managing Roles (Admin vs Member)
-
-1. **Initial Admin**:
-   - The person who deploys the spreadsheet is automatically assigned the **`Admin`** role.
-2. **Assigning Roles**:
-   - As an Admin, you will see a **"👥 Manage Users"** button in the left sidebar / header of the calendar.
-   - Click it to view all registered users.
-   - Use the dropdown next to any user's name to switch their role between **`Member`** and **`Admin`**.
-   - You can also pre-register colleagues by entering their Name, Google Email, and desired role.
-3. **Security**:
-   - Server-side validation prevents non-admins from approving events or changing user roles.
-
----
-
-## 📅 Daily Event Email Digest
-
-- **Automated**: Runs every morning between 7:00 AM – 8:00 AM via Google Apps Script time-driven trigger.
-- **Manual Broadcast**: Admins can click **"📧 Broadcast Today's Digest"** in the sidebar to send out reminders immediately for today's approved events.
-- Recipients are automatically all active users in the **Users** sheet.
+### Step 2: Get a Free Google OAuth Client ID (for Google Login)
+1. Go to [Google Cloud Console](https://console.cloud.google.com).
+2. Create a new project (e.g. `CSF-Calendar`).
+3. In the search bar, search for **OAuth consent screen**:
+   - Choose User Type: **External** (or **Internal** if your college uses Google Workspace).
+   - Fill in App Name (e.g., `CSF Event Calendar`) and your email. Click **Save and Continue**.
+4. Go to **Credentials** (left menu) → click **+ Create Credentials** → select **OAuth client ID**.
+5. Select Application Type: **Web application**.
+6. Under **Authorized JavaScript origins**, click **+ Add URI**:
+   - Add `http://localhost` (for testing)
+   - Add your Vercel URL (e.g. `https://csf-calendar.vercel.app` — you can also add this after deploying on Vercel).
+7. Click **Create** and **copy your Client ID** (e.g., `xxxxxxxxxxxx-xxxxxxxx.apps.googleusercontent.com`).
 
 ---
 
-## 📹 Google Calendar & Google Meet Sync (Optional)
+### Step 3: Deploy to Vercel (1 Click)
+1. Go to [Vercel](https://vercel.com) and log in with GitHub.
+2. Click **Add New...** → **Project**.
+3. Import your GitHub repository: `https://github.com/MJ636UoW/CSF_calender`.
+4. Leave framework preset as **Other** (static HTML).
+5. Click **Deploy**!
+6. Once deployed, open your live Vercel website URL.
+7. Click the **⚙️ Connection Settings** icon in the top header:
+   - Paste your **Google Apps Script Web App URL** from Step 1.
+   - Paste your **Google OAuth Client ID** from Step 2.
+   - Click **Save & Reconnect**.
+8. Go back to Google Cloud Console (Step 2) and ensure your new Vercel domain is added under **Authorized JavaScript origins**.
 
-1. If you want approved events to sync to a shared department Google Calendar:
-   - Open Google Calendar → Create a new calendar (e.g. *CSF Events*).
-   - Go to Calendar Settings → copy the **Calendar ID** (e.g. `c_xxxxxx@group.calendar.google.com`).
-   - Open your Google Sheet → Go to the **Settings** tab → paste the Calendar ID in the row next to `CalendarId`.
-2. When an Admin clicks **Approve**, the event automatically syncs to Google Calendar and generates the Google Meet video meeting link.
+You are now completely live on Vercel with Google Account Login!
+
+---
+
+## 👥 Role Management (Admin vs Member)
+
+- **`Admin`**:
+  - Approves or rejects proposed events.
+  - Can open the **"👥 Manage Users & Roles"** panel to assign or change user roles (`Admin` or `Member`).
+  - Can click **"📧 Broadcast Today's Digest"** to send morning email summaries on demand.
+- **`Member`**:
+  - Signs in with Google account.
+  - Can browse the calendar and view event guidelines.
+  - Can propose new events for today or any future date.
+  - Can join Google Meet video meetings with 1 click.
+  - Can participate in the comments/thoughts thread.
+- **Approval Gate**:
+  - Only events approved by an Admin appear on the public calendar for all members.
+
+---
+
+## 📹 Google Meet & Calendar Sync
+
+When an event is submitted with **"📹 Arrange Google Meet"** checked, upon Admin approval:
+- A dedicated Google Meet link is linked.
+- Attendees see a direct **"📹 Join with Google Meet"** button in the event popup.
+- The event automatically synchronizes with your department Google Calendar (configured in the Sheet's `Settings` tab).
+
+---
+
+## 📧 Daily Morning Event Digest
+
+- Automatically sent every morning at 8:00 AM to all registered member emails using Google Apps Script's built-in time-driven trigger.
+- Includes times, venue, coordinator, guidelines, and direct Google Meet video links.

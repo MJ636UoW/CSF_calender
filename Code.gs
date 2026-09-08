@@ -1,9 +1,10 @@
 /**
  * CSF Event Planning & Approval System
- * Production-Ready Google Apps Script Backend
+ * Production-Ready Google Apps Script Backend & JSON API for Vercel
  * 
  * Supports:
- * - Google Account authentication & session detection
+ * - Native Apps Script Web App & External Vercel API via doGet / doPost
+ * - Google Account authentication & session verification
  * - Role-Based Access Control: 'admin' and 'member' only
  * - Admin User Management (assigning member/admin roles)
  * - Admin approval gate (only approved events visible to all members)
@@ -27,9 +28,15 @@ const ROLES = {
 };
 
 /**
- * Serves the web app
+ * Handles GET requests:
+ * - If action parameter is provided: returns JSON API response (for Vercel)
+ * - Otherwise: renders Index.html as native Apps Script Web App
  */
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.action) {
+    return handleApiRequest_(e.parameter.action, e.parameter);
+  }
+
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('CSF Event Calendar & Approval Portal')
@@ -38,13 +45,94 @@ function doGet() {
 }
 
 /**
+ * Handles POST requests from external frontend (Vercel)
+ */
+function doPost(e) {
+  try {
+    let payload = {};
+    if (e && e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      payload = e.parameter;
+    }
+    const action = payload.action || (e && e.parameter ? e.parameter.action : '');
+    return handleApiRequest_(action, payload);
+  } catch (err) {
+    return jsonResponse_({ ok: false, error: err.message });
+  }
+}
+
+/**
+ * API Router for Vercel / External Clients
+ */
+function handleApiRequest_(action, data) {
+  try {
+    const userEmail = clean_(data.userEmail || data.email || getCurrentUserEmail_()).toLowerCase();
+    const userName = clean_(data.userName || data.name);
+    let result = {};
+
+    switch (action) {
+      case 'getBootstrapData':
+        result = getBootstrapData(userEmail, userName);
+        break;
+
+      case 'getEventDetails':
+        result = getEventDetails(data.eventId, userEmail);
+        break;
+
+      case 'submitEvent':
+        result = submitEvent(data.payload || data, userEmail, userName);
+        break;
+
+      case 'setEventStatus':
+        result = setEventStatus(data.eventId, data.status, data.adminComment, data.customMeetLink, userEmail);
+        break;
+
+      case 'addComment':
+        result = addComment(data.eventId, data.text, userEmail, userName);
+        break;
+
+      case 'getAllUsers':
+        result = getAllUsers(userEmail);
+        break;
+
+      case 'updateUserRole':
+        result = updateUserRole(data.targetEmail, data.newRole, userEmail);
+        break;
+
+      case 'addUser':
+        result = addUser(data.name, data.email, data.role, userEmail);
+        break;
+
+      case 'triggerDailyNotificationNow':
+        result = triggerDailyNotificationNow(userEmail);
+        break;
+
+      case 'setupProject':
+        result = { ok: true, message: setupProject() };
+        break;
+
+      default:
+        throw new Error(`Unknown API action: "${action}"`);
+    }
+
+    return jsonResponse_({ ok: true, data: result });
+  } catch (err) {
+    return jsonResponse_({ ok: false, error: err.message });
+  }
+}
+
+function jsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
  * Initializes and verifies all required sheets and column headers.
- * Self-healing: adds missing columns and sheets automatically.
  */
 function setupProject() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // 1. Ensure Sheets exist
   const requiredSheets = [
     {
       name: SHEETS.EVENTS,
@@ -79,17 +167,13 @@ function setupProject() {
 
   requiredSheets.forEach(item => {
     let sheet = ss.getSheetByName(item.name);
-    if (!sheet) {
-      sheet = ss.insertSheet(item.name);
-    }
+    if (!sheet) sheet = ss.insertSheet(item.name);
     
-    // Check and set headers
     const currentHeaders = sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
     if (currentHeaders.length === 0) {
       sheet.appendRow(item.headers);
       sheet.getRange(1, 1, 1, item.headers.length).setFontWeight('bold').setBackground('#E2E8F0');
     } else {
-      // Append any missing headers
       item.headers.forEach(h => {
         if (!currentHeaders.map(String).map(s => s.trim().toLowerCase()).includes(h.toLowerCase())) {
           sheet.getRange(1, sheet.getLastColumn() + 1).setValue(h).setFontWeight('bold').setBackground('#E2E8F0');
@@ -97,19 +181,16 @@ function setupProject() {
       });
     }
 
-    // Insert default settings if Settings sheet is newly populated
     if (item.defaults && sheet.getLastRow() <= 1) {
       item.defaults.forEach(d => sheet.appendRow(d));
     }
   });
 
-  // Ensure current deployer is recorded as an Admin in Users
   const deployerEmail = getCurrentUserEmail_();
   if (deployerEmail) {
     ensureAdminExists_(deployerEmail);
   }
 
-  // Set up automated daily digest trigger
   setupDailyNotificationTrigger();
 
   return 'Setup completed successfully. Sheets verified, admin initialized, and daily notification trigger configured.';
@@ -118,9 +199,9 @@ function setupProject() {
 /**
  * Bootstrap data required on frontend load
  */
-function getBootstrapData() {
-  const email = getCurrentUserEmail_();
-  const currentUser = getUserByEmail_(email);
+function getBootstrapData(clientEmail, clientName) {
+  const email = clientEmail || getCurrentUserEmail_();
+  const currentUser = getUserByEmail_(email, clientName);
   const settings = getSettings_();
   const events = getEventsForUser_(currentUser);
   
@@ -145,13 +226,10 @@ function getCurrentUserEmail_() {
 
 /**
  * Fetches user profile from Users sheet.
- * If user does not exist:
- * - If spreadsheet owner or first active user -> auto-registers as ADMIN
- * - Otherwise -> auto-registers as MEMBER
  */
-function getUserByEmail_(email) {
+function getUserByEmail_(email, optName) {
   if (!email) {
-    return { name: 'Guest User', email: '', role: ROLES.MEMBER };
+    return { name: optName || 'Guest User', email: '', role: ROLES.MEMBER };
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -167,48 +245,38 @@ function getUserByEmail_(email) {
   const emailIdx = headers.indexOf('email') >= 0 ? headers.indexOf('email') : 1;
   const roleIdx = headers.indexOf('role') >= 0 ? headers.indexOf('role') : 2;
 
-  // Search existing users
   for (let i = 1; i < values.length; i++) {
     const rowEmail = (values[i][emailIdx] || '').trim().toLowerCase();
     if (rowEmail === email) {
       let rawRole = (values[i][roleIdx] || '').trim().toLowerCase();
-      // Map legacy or custom roles strictly to 'admin' or 'member'
       let normalizedRole = (rawRole === 'admin' || rawRole === 'hod') ? ROLES.ADMIN : ROLES.MEMBER;
-      let displayName = values[i][nameIdx] || email.split('@')[0];
+      let displayName = values[i][nameIdx] || optName || email.split('@')[0];
       return { name: displayName, email: email, role: normalizedRole };
     }
   }
 
-  // Not in Users sheet: Auto-register
+  // Not found in Users: Auto-register
   const ownerEmail = (Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
   const isOwner = (email === ownerEmail) || (values.length <= 1);
   const assignedRole = isOwner ? ROLES.ADMIN : ROLES.MEMBER;
-  const displayName = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const displayName = optName || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
   sheet.appendRow([displayName, email, assignedRole, 'Active', new Date()]);
   return { name: displayName, email: email, role: assignedRole };
 }
 
-/**
- * Ensures at least one admin exists in the Users sheet
- */
 function ensureAdminExists_(adminEmail) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.USERS);
   const values = sheet.getDataRange().getDisplayValues();
   
   let found = false;
-  let hasAnyAdmin = false;
-
   for (let i = 1; i < values.length; i++) {
     const rowEmail = (values[i][1] || '').trim().toLowerCase();
     const rowRole = (values[i][2] || '').trim().toLowerCase();
-    if (rowRole === 'admin' || rowRole === 'hod') hasAnyAdmin = true;
     if (rowEmail === adminEmail) {
       found = true;
-      if (rowRole !== 'admin') {
-        sheet.getRange(i + 1, 3).setValue(ROLES.ADMIN);
-      }
+      if (rowRole !== 'admin') sheet.getRange(i + 1, 3).setValue(ROLES.ADMIN);
     }
   }
 
@@ -217,9 +285,6 @@ function ensureAdminExists_(adminEmail) {
   }
 }
 
-/**
- * Fetch settings key-value map
- */
 function getSettings_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.SETTINGS);
@@ -231,9 +296,6 @@ function getSettings_() {
   return out;
 }
 
-/**
- * Get all raw events from sheet
- */
 function getAllRawEvents_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.EVENTS);
@@ -244,11 +306,6 @@ function getAllRawEvents_() {
   return data.slice(1).filter(r => r[0]).map(r => rowToObject_(h, r));
 }
 
-/**
- * Retrieves events with strict role visibility:
- * - Admin: Sees ALL events (Approved, Pending, Rejected)
- * - Member: Sees ALL Approved events + their own submitted events (even if Pending/Rejected)
- */
 function getEventsForUser_(user) {
   const allEvents = getAllRawEvents_();
   if (user.role === ROLES.ADMIN) {
@@ -262,16 +319,12 @@ function getEventsForUser_(user) {
   });
 }
 
-/**
- * Get single event details with associated comments
- */
-function getEventDetails(eventId) {
-  const email = getCurrentUserEmail_();
+function getEventDetails(eventId, clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email);
   const event = findEventById_(eventId);
   if (!event) throw new Error('Event not found.');
 
-  // Check authorization
   if (user.role !== ROLES.ADMIN && event.Status !== 'Approved' && (event.SubmittedEmail || '').toLowerCase() !== user.email.toLowerCase()) {
     throw new Error('Access denied to view this unapproved event.');
   }
@@ -282,12 +335,9 @@ function getEventDetails(eventId) {
   };
 }
 
-/**
- * Submit / Propose an Event (Open to Members and Admins for today or future dates)
- */
-function submitEvent(payload) {
-  const email = getCurrentUserEmail_();
-  const user = getUserByEmail_(email);
+function submitEvent(payload, clientEmail, clientName) {
+  const email = clientEmail || getCurrentUserEmail_();
+  const user = getUserByEmail_(email, clientName);
   validateEventPayload_(payload);
 
   const eventId = 'EVT-' + Utilities.getUuid().slice(0, 8).toUpperCase();
@@ -299,7 +349,6 @@ function submitEvent(payload) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idx = indexMap_(headers);
 
-  // Build row according to headers
   const row = new Array(headers.length).fill('');
   setVal_(row, idx.EventID, eventId);
   setVal_(row, idx.Title, clean_(payload.title));
@@ -332,16 +381,13 @@ function submitEvent(payload) {
     ok: true,
     eventId: eventId,
     conflicts: conflicts,
-    message: 'Event proposed successfully. It will appear on the general calendar once approved by an Admin.'
+    message: 'Event proposed successfully. It will appear on the calendar once approved by an Admin.'
   };
 }
 
-/**
- * Add a comment or thought to an event
- */
-function addComment(eventId, text) {
-  const email = getCurrentUserEmail_();
-  const user = getUserByEmail_(email);
+function addComment(eventId, text, clientEmail, clientName) {
+  const email = clientEmail || getCurrentUserEmail_();
+  const user = getUserByEmail_(email, clientName);
   const cleanComment = clean_(text);
   if (!cleanComment) throw new Error('Comment cannot be empty.');
 
@@ -353,12 +399,8 @@ function addComment(eventId, text) {
   return getCommentsForEvent_(eventId);
 }
 
-/**
- * Admin Action: Approve or Reject an event
- * Only users with role === 'admin' can execute this.
- */
-function setEventStatus(eventId, status, adminComment, customMeetLink) {
-  const email = getCurrentUserEmail_();
+function setEventStatus(eventId, status, adminComment, customMeetLink, clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email);
   
   if (user.role !== ROLES.ADMIN) {
@@ -388,7 +430,6 @@ function setEventStatus(eventId, status, adminComment, customMeetLink) {
   }
   if (row < 0 || !event) throw new Error('Event not found.');
 
-  // Detect any venue/time conflicts
   const conflicts = findConflicts_({
     date: event.Date,
     startTime: event.StartTime,
@@ -396,19 +437,15 @@ function setEventStatus(eventId, status, adminComment, customMeetLink) {
     venue: event.Venue
   }, eventId);
 
-  // Update Status and Decision fields
   sheet.getRange(row, (idx.AdminComment !== undefined ? idx.AdminComment : idx.HODComment) + 1).setValue(clean_(adminComment));
   sheet.getRange(row, idx.Status + 1).setValue(status);
   sheet.getRange(row, idx.DecisionBy + 1).setValue(`${user.name} <${email}>`);
   sheet.getRange(row, idx.DecisionDate + 1).setValue(new Date());
 
-  // Handle Google Meet & Calendar Sync
   let generatedMeetLink = clean_(customMeetLink) || event.MeetLink || '';
   if (status === 'Approved') {
-    // If arrange meet was requested and no link yet, create Google Meet room link
     const shouldArrangeMeet = (String(event.ArrangeMeet).toUpperCase() === 'TRUE') || !!customMeetLink;
     if (shouldArrangeMeet && !generatedMeetLink) {
-      // Standard dedicated Google Meet room identifier for this event
       generatedMeetLink = `https://meet.google.com/lookup/csf-${eventId.toLowerCase()}`;
     }
     
@@ -417,7 +454,6 @@ function setEventStatus(eventId, status, adminComment, customMeetLink) {
       event.MeetLink = generatedMeetLink;
     }
 
-    // Sync to Google Calendar
     try {
       syncApprovedEventToCalendar_(eventId, event, row, idx, sheet);
     } catch (calErr) {
@@ -440,9 +476,6 @@ function setEventStatus(eventId, status, adminComment, customMeetLink) {
   };
 }
 
-/**
- * Synchronize approved event to Google Calendar
- */
 function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
   const calendarId = String(getSettings_().CalendarId || '').trim();
   if (!calendarId) return '';
@@ -462,7 +495,7 @@ function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
   if (event.MeetLink) descParts.push(`Google Meet: ${event.MeetLink}`);
   if (event.Speaker) descParts.push(`Speaker: ${event.Speaker}`);
   if (event.Description) descParts.push(`\nDescription:\n${event.Description}`);
-  if (event.Guide) descParts.push(`\nGuidelines/Instructions:\n${event.Guide}`);
+  if (event.Guide) descParts.push(`\nGuidelines:\n${event.Guide}`);
 
   const created = cal.createEvent(event.Title, startDt, endDt, {
     location: event.Venue || 'Campus / Virtual',
@@ -479,9 +512,6 @@ function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
   return created.getId();
 }
 
-/**
- * Remove event from Google Calendar
- */
 function removeCalendarEvent_(id) {
   const calendarId = String(getSettings_().CalendarId || '').trim();
   if (!calendarId || !id) return;
@@ -491,9 +521,6 @@ function removeCalendarEvent_(id) {
   if (e) e.deleteEvent();
 }
 
-/**
- * Conflict detection
- */
 function findConflicts_(payload, ignoreId) {
   const date = String(payload.date || '');
   const s = minutes_(payload.startTime);
@@ -519,11 +546,8 @@ function findConflicts_(payload, ignoreId) {
   }));
 }
 
-/**
- * User Management APIs (Strictly Admin-Only)
- */
-function getAllUsers() {
-  const email = getCurrentUserEmail_();
+function getAllUsers(clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
   const currentUser = getUserByEmail_(email);
   if (currentUser.role !== ROLES.ADMIN) {
     throw new Error('Access denied: Only an Admin can access User Management.');
@@ -556,12 +580,8 @@ function getAllUsers() {
   return list;
 }
 
-/**
- * Update user role (Strictly Admin-Only)
- * Only assigns 'admin' or 'member'
- */
-function updateUserRole(targetEmail, newRole) {
-  const adminEmail = getCurrentUserEmail_();
+function updateUserRole(targetEmail, newRole, clientEmail) {
+  const adminEmail = clientEmail || getCurrentUserEmail_();
   const adminUser = getUserByEmail_(adminEmail);
   if (adminUser.role !== ROLES.ADMIN) {
     throw new Error('Access denied: Only an Admin can assign roles.');
@@ -580,7 +600,6 @@ function updateUserRole(targetEmail, newRole) {
   const emailIdx = headers.indexOf('email') >= 0 ? headers.indexOf('email') : 1;
   const roleIdx = headers.indexOf('role') >= 0 ? headers.indexOf('role') : 2;
 
-  // Prevent demoting the last admin
   if (normalizedRole === ROLES.MEMBER) {
     let adminCount = 0;
     for (let i = 1; i < data.length; i++) {
@@ -602,18 +621,14 @@ function updateUserRole(targetEmail, newRole) {
   }
 
   if (!updated) {
-    // Add user if not currently in sheet
     sheet.appendRow([target.split('@')[0], target, normalizedRole, 'Active', new Date()]);
   }
 
   return { ok: true, email: target, role: normalizedRole };
 }
 
-/**
- * Add / Invite a user by email (Admin-Only)
- */
-function addUser(name, email, role) {
-  const adminEmail = getCurrentUserEmail_();
+function addUser(name, email, role, clientEmail) {
+  const adminEmail = clientEmail || getCurrentUserEmail_();
   const adminUser = getUserByEmail_(adminEmail);
   if (adminUser.role !== ROLES.ADMIN) {
     throw new Error('Access denied: Only an Admin can add users.');
@@ -640,22 +655,11 @@ function addUser(name, email, role) {
   return { ok: true, user: { name: displayName, email: cleanEmail, role: assignedRole } };
 }
 
-/**
- * ==========================================================
- * DAILY NOTIFICATION DIGEST SYSTEM
- * ==========================================================
- */
-
-/**
- * Sends daily email digest of today's approved events to all registered users.
- * Can be run via time-driven trigger or triggered on-demand by Admin.
- */
 function sendDailyEventDigest() {
   const timeZone = Session.getScriptTimeZone();
   const todayStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
   const todayFormatted = Utilities.formatDate(new Date(), timeZone, 'EEEE, MMMM d, yyyy');
 
-  // 1. Get all today's approved events
   const allEvents = getAllRawEvents_();
   const todayEvents = allEvents.filter(e => e.Status === 'Approved' && String(e.Date) === todayStr);
 
@@ -667,7 +671,6 @@ function sendDailyEventDigest() {
     return { ok: true, sent: 0, reason: 'No events scheduled for today.' };
   }
 
-  // 2. Gather recipient emails
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const userSheet = ss.getSheetByName(SHEETS.USERS);
   const userData = userSheet.getDataRange().getDisplayValues();
@@ -682,13 +685,11 @@ function sendDailyEventDigest() {
   }
 
   if (emailSet.size === 0) {
-    Logger.log('No active users found to receive the daily digest.');
     return { ok: true, sent: 0, reason: 'No active user emails found.' };
   }
 
   const recipients = Array.from(emailSet);
 
-  // 3. Build HTML Email
   let eventsHtml = '';
   if (todayEvents.length === 0) {
     eventsHtml = '<p style="color:#64748B;font-style:italic;">There are no scheduled events for today. Enjoy your day!</p>';
@@ -706,7 +707,7 @@ function sendDailyEventDigest() {
           ${e.Speaker ? `<tr><td style="font-weight:600;padding:4px 0;color:#64748B;">🎤 Speaker:</td><td>${escHtml_(e.Speaker)}</td></tr>` : ''}
         </table>
         ${e.Description ? `<div style="margin-top:8px;font-size:13px;color:#475569;background:#F8FAFC;padding:10px;border-radius:6px;"><strong>Description:</strong> ${escHtml_(e.Description)}</div>` : ''}
-        ${e.Guide ? `<div style="margin-top:6px;font-size:13px;color:#475569;background:#F1F5F9;padding:10px;border-radius:6px;"><strong>Guidelines/Instructions:</strong> ${escHtml_(e.Guide)}</div>` : ''}
+        ${e.Guide ? `<div style="margin-top:6px;font-size:13px;color:#475569;background:#F1F5F9;padding:10px;border-radius:6px;"><strong>Guidelines:</strong> ${escHtml_(e.Guide)}</div>` : ''}
         ${e.MeetLink ? `
           <div style="margin-top:12px;">
             <a href="${escHtml_(e.MeetLink)}" target="_blank" style="display:inline-block;background:#0284C7;color:#FFFFFF;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
@@ -739,18 +740,12 @@ function sendDailyEventDigest() {
     </html>
   `;
 
-  // Send email to all recipients
   const appTitle = settings.AppTitle || 'CSF Event Portal';
   const subject = `[${appTitle}] Today's Events - ${todayFormatted} (${todayEvents.length} scheduled)`;
 
-  // Send via MailApp
   recipients.forEach(r => {
     try {
-      MailApp.sendEmail({
-        to: r,
-        subject: subject,
-        htmlBody: emailBody
-      });
+      MailApp.sendEmail({ to: r, subject: subject, htmlBody: emailBody });
     } catch (err) {
       Logger.log(`Failed sending digest to ${r}: ${err.message}`);
     }
@@ -764,11 +759,7 @@ function sendDailyEventDigest() {
   };
 }
 
-/**
- * Configure automated daily morning trigger
- */
 function setupDailyNotificationTrigger() {
-  // Clear any existing sendDailyEventDigest triggers
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(t => {
     if (t.getHandlerFunction() === 'sendDailyEventDigest') {
@@ -776,7 +767,6 @@ function setupDailyNotificationTrigger() {
     }
   });
 
-  // Create daily trigger at 8:00 AM
   ScriptApp.newTrigger('sendDailyEventDigest')
     .timeBased()
     .everyDays(1)
@@ -786,11 +776,8 @@ function setupDailyNotificationTrigger() {
   return 'Daily morning notification trigger configured for 8:00 AM.';
 }
 
-/**
- * Admin action: Manually trigger today's event digest email right now
- */
-function triggerDailyNotificationNow() {
-  const email = getCurrentUserEmail_();
+function triggerDailyNotificationNow(clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email);
   if (user.role !== ROLES.ADMIN) {
     throw new Error('Access denied: Only an Admin can trigger notification broadcasts.');
@@ -798,9 +785,6 @@ function triggerDailyNotificationNow() {
   return sendDailyEventDigest();
 }
 
-/**
- * Helpers & Utilities
- */
 function getCommentsForEvent_(eventId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.COMMENTS);
@@ -850,9 +834,7 @@ function setVal_(arr, index, val) {
 
 function indexMap_(h) {
   const m = {};
-  h.forEach((x, i) => {
-    m[x] = i;
-  });
+  h.forEach((x, i) => m[x] = i);
   return m;
 }
 

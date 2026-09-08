@@ -8,6 +8,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Google Identity Services (Sign in with Google) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js"></script>
   <style>
     :root {
       --google-blue: #1a73e8;
@@ -45,9 +48,7 @@
       overflow: hidden;
     }
 
-    /* ========================================================== */
-    /* GOOGLE CALENDAR HEADER */
-    /* ========================================================== */
+    /* Top Google Calendar Header */
     header {
       height: 64px;
       padding: 8px 16px;
@@ -95,7 +96,7 @@
     }
     .app-title strong { color: var(--text-dark); font-weight: 700; }
 
-    /* Nav Buttons */
+    /* Navigation Controls */
     .nav-controls {
       display: flex;
       align-items: center;
@@ -144,9 +145,7 @@
       align-items: center;
       gap: 12px;
     }
-    .search-container {
-      position: relative;
-    }
+    .search-container { position: relative; }
     .search-input {
       background: #f1f3f4;
       border: 1px solid transparent;
@@ -174,6 +173,8 @@
       color: #5f6368;
       pointer-events: none;
     }
+
+    /* User Profile Badge */
     .user-profile-badge {
       display: flex;
       align-items: center;
@@ -194,10 +195,9 @@
       justify-content: center;
       font-weight: 700;
       font-size: 14px;
+      object-fit: cover;
     }
-    .user-meta {
-      line-height: 1.2;
-    }
+    .user-meta { line-height: 1.2; }
     .user-display-name {
       font-size: 13px;
       font-weight: 600;
@@ -215,9 +215,7 @@
     .role-pill.admin { background: #fef08a; color: #854d0e; }
     .role-pill.member { background: #e0f2fe; color: #075985; }
 
-    /* ========================================================== */
-    /* MAIN BODY: SIDEBAR + CALENDAR GRID */
-    /* ========================================================== */
+    /* Main Layout */
     .main-layout {
       display: flex;
       flex: 1;
@@ -257,11 +255,7 @@
       box-shadow: 0 2px 6px 2px rgba(60,64,67,0.3);
       background: #fafafa;
     }
-    .create-plus-icon {
-      font-size: 24px;
-      font-weight: 400;
-      color: #ea4335;
-    }
+    .create-plus-icon { font-size: 24px; font-weight: 400; color: #ea4335; }
     .sidebar-section h4 {
       margin: 0 0 10px;
       font-size: 12px;
@@ -283,17 +277,12 @@
     }
     .filter-item:hover { background: #f1f3f4; }
     .filter-item.active { background: var(--google-blue-light); color: var(--google-blue); font-weight: 600; }
-    .color-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 3px;
-    }
+    .color-dot { width: 12px; height: 12px; border-radius: 3px; }
     .dot-approved { background: #137333; }
     .dot-pending { background: #b06000; }
     .dot-all { background: var(--google-blue); }
     .dot-my { background: #7c3aed; }
 
-    /* Admin Action Buttons */
     .admin-menu-btn {
       display: flex;
       align-items: center;
@@ -313,7 +302,7 @@
     }
     .admin-menu-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
 
-    /* Calendar Main Area */
+    /* Calendar Grid */
     .calendar-workspace {
       flex: 1;
       display: flex;
@@ -321,8 +310,6 @@
       overflow: hidden;
       background: #fff;
     }
-
-    /* Day Headers (Sun-Sat) */
     .cal-days-header {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -342,7 +329,6 @@
     }
     .cal-day-name:last-child { border-right: none; }
 
-    /* Calendar Days Grid */
     .cal-month-grid {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
@@ -390,11 +376,8 @@
       color: #fff;
       font-weight: 700;
     }
-    .cal-cell.out-of-month .cell-date-num {
-      color: #bdc1c6;
-    }
+    .cal-cell.out-of-month .cell-date-num { color: #bdc1c6; }
 
-    /* Event Chips (Google Calendar Style) */
     .event-container {
       display: flex;
       flex-direction: column;
@@ -423,34 +406,12 @@
       transform: translateY(-1px);
       box-shadow: 0 2px 4px rgba(0,0,0,0.12);
     }
-    .gcal-chip.approved {
-      background: var(--approved-bg);
-      color: var(--approved-text);
-      border-left-color: #137333;
-    }
-    .gcal-chip.pending {
-      background: var(--pending-bg);
-      color: var(--pending-text);
-      border-left-color: #b06000;
-    }
-    .gcal-chip.rejected {
-      background: var(--rejected-bg);
-      color: var(--rejected-text);
-      border-left-color: #c5221f;
-    }
-    .chip-time {
-      font-weight: 700;
-      font-size: 10px;
-      opacity: 0.85;
-      flex-shrink: 0;
-    }
-    .chip-title {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .gcal-chip.approved { background: var(--approved-bg); color: var(--approved-text); border-left-color: #137333; }
+    .gcal-chip.pending { background: var(--pending-bg); color: var(--pending-text); border-left-color: #b06000; }
+    .gcal-chip.rejected { background: var(--rejected-bg); color: var(--rejected-text); border-left-color: #c5221f; }
+    .chip-time { font-weight: 700; font-size: 10px; opacity: 0.85; flex-shrink: 0; }
+    .chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    /* Hover "+ Add" indicator */
     .cell-hover-add {
       position: absolute;
       top: 6px;
@@ -461,13 +422,9 @@
       font-weight: 700;
       transition: opacity 0.15s;
     }
-    .cal-cell:hover:not(.out-of-month) .cell-hover-add {
-      opacity: 1;
-    }
+    .cal-cell:hover:not(.out-of-month) .cell-hover-add { opacity: 1; }
 
-    /* ========================================================== */
-    /* MODALS */
-    /* ========================================================== */
+    /* Modals */
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -502,12 +459,7 @@
       align-items: center;
       border-bottom: 1px solid var(--border);
     }
-    .dialog-header h3 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-dark);
-    }
+    .dialog-header h3 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-dark); }
     .btn-close {
       background: transparent;
       border: 0;
@@ -522,11 +474,7 @@
       color: #5f6368;
     }
     .btn-close:hover { background: #f1f3f4; }
-    .dialog-body {
-      padding: 20px;
-      overflow-y: auto;
-      flex: 1;
-    }
+    .dialog-body { padding: 20px; overflow-y: auto; flex: 1; }
     .dialog-footer {
       padding: 12px 20px;
       border-top: 1px solid var(--border);
@@ -536,22 +484,9 @@
       background: #f8f9fa;
     }
 
-    /* Form Fields */
-    .form-row {
-      margin-bottom: 14px;
-    }
-    .form-grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: #5f6368;
-      margin-bottom: 4px;
-    }
+    .form-row { margin-bottom: 14px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: #5f6368; margin-bottom: 4px; }
     input, select, textarea {
       width: 100%;
       border: 1px solid var(--border);
@@ -578,20 +513,9 @@
       align-items: center;
       gap: 10px;
     }
-    .meet-toggle-box input[type="checkbox"] {
-      width: 18px;
-      height: 18px;
-      cursor: pointer;
-    }
-    .meet-toggle-box label {
-      margin: 0;
-      cursor: pointer;
-      color: #004a77;
-      font-weight: 600;
-      font-size: 13px;
-    }
+    .meet-toggle-box input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    .meet-toggle-box label { margin: 0; cursor: pointer; color: #004a77; font-weight: 600; font-size: 13px; }
 
-    /* Buttons */
     .btn {
       padding: 8px 18px;
       font-size: 14px;
@@ -614,14 +538,7 @@
     .btn-red { background: #c5221f; color: #fff; }
     .btn-red:hover { background: #9c1c19; }
 
-    /* Event Details View */
-    .details-list {
-      display: grid;
-      grid-template-columns: 130px 1fr;
-      gap: 8px 12px;
-      font-size: 14px;
-      margin-bottom: 16px;
-    }
+    .details-list { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; font-size: 14px; margin-bottom: 16px; }
     .dl-label { font-weight: 600; color: var(--text-muted); }
     .dl-val { color: var(--text-dark); word-break: break-word; }
 
@@ -656,39 +573,25 @@
       padding: 14px;
       margin-top: 14px;
     }
+    .comments-thread { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+    .comment-bubble { background: #f1f3f4; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 8px; }
 
-    .comments-thread {
-      margin-top: 16px;
-      border-top: 1px solid var(--border);
-      padding-top: 14px;
-    }
-    .comment-bubble {
-      background: #f1f3f4;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font-size: 13px;
-      margin-bottom: 8px;
-    }
-
-    /* User Table */
-    .user-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    .user-table th {
-      text-align: left;
-      padding: 8px 12px;
-      background: #f8f9fa;
-      border-bottom: 1px solid var(--border);
-      color: var(--text-muted);
-    }
-    .user-table td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-    }
+    .user-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .user-table th { text-align: left; padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+    .user-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
 
     .hidden { display: none !important; }
+
+    /* Google Sign-in Banner (Shown if not logged in on Vercel) */
+    .auth-banner {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      padding: 30px;
+      max-width: 440px;
+      width: 90%;
+      text-align: center;
+    }
     
     @media(max-width: 768px) {
       aside { display: none; }
@@ -724,13 +627,17 @@
       <input type="text" class="search-input" id="calSearchInput" placeholder="Search events...">
     </div>
 
+    <!-- Backend Config Settings Button -->
+    <button class="icon-btn" id="btnOpenConfig" title="Connection Settings">⚙️</button>
+
     <!-- User Profile Badge -->
-    <div class="user-profile-badge">
+    <div class="user-profile-badge" id="userProfileWrap">
       <div class="user-avatar" id="userAvatar">U</div>
       <div class="user-meta">
         <span class="user-display-name" id="userName">Connecting...</span>
         <span class="role-pill member" id="userRolePill">MEMBER</span>
       </div>
+      <button class="btn-ghost" id="btnLogout" style="padding:2px 8px;font-size:11px;border-radius:12px;margin-left:4px;cursor:pointer;">Sign Out</button>
     </div>
   </div>
 </header>
@@ -798,7 +705,6 @@
 
   <!-- MAIN CALENDAR GRID -->
   <main class="calendar-workspace">
-    <!-- Day Names Header -->
     <div class="cal-days-header">
       <div class="cal-day-name">SUN</div>
       <div class="cal-day-name">MON</div>
@@ -808,10 +714,59 @@
       <div class="cal-day-name">FRI</div>
       <div class="cal-day-name">SAT</div>
     </div>
-
-    <!-- 7-Column Month Grid -->
     <div class="cal-month-grid" id="monthGrid"></div>
   </main>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: GOOGLE LOGIN (Vercel Authentication) -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="authModal">
+  <div class="auth-banner">
+    <div class="cal-icon-box" style="margin:0 auto 16px;width:48px;height:48px;">
+      <span class="cal-icon-month">CSF</span>
+      <span class="cal-icon-date">📅</span>
+    </div>
+    <h2 style="margin:0 0 8px;font-size:20px;">CSF Event Calendar</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin:0 0 20px;">
+      Sign in with your Google account to view the institutional schedule and propose events.
+    </p>
+
+    <!-- Google Sign-In Button Container -->
+    <div id="googleSignInButton" style="display:flex;justify-content:center;margin-bottom:16px;"></div>
+
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);">
+      CSF Security & Faculty Planning Portal
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: BACKEND CONNECTION SETTINGS -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="configModal">
+  <div class="gcal-dialog" style="width:min(540px, 100%);">
+    <div class="dialog-header">
+      <h3>⚙️ Backend & Google Auth Connection</h3>
+      <button class="btn-close" data-close="configModal">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="form-row">
+        <label>Google Apps Script Web App URL (ends in /exec):</label>
+        <input type="url" id="cfgScriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+        <small style="color:var(--text-muted);font-size:11px;">From Google Sheets → Extensions → Apps Script → Deploy → Web app.</small>
+      </div>
+      <div class="form-row">
+        <label>Google OAuth 2.0 Client ID (for Sign in with Google):</label>
+        <input type="text" id="cfgClientId" placeholder="xxxxxxxxxxxx-xxxxxxxx.apps.googleusercontent.com">
+        <small style="color:var(--text-muted);font-size:11px;">From Google Cloud Console → Credentials → OAuth 2.0 Client ID.</small>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button class="btn btn-ghost" data-close="configModal">Cancel</button>
+      <button class="btn btn-blue" id="btnSaveConfig">Save & Reconnect</button>
+    </div>
+  </div>
 </div>
 
 <!-- ========================================================== -->
@@ -991,7 +946,6 @@
     </div>
 
     <div class="dialog-body">
-      <!-- Add User Row -->
       <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;">
         <label style="margin-bottom:8px;">Add / Pre-assign Role by Google Email:</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -1029,6 +983,7 @@
 </div>
 
 <script>
+  // State
   const State = {
     user: null,
     settings: {},
@@ -1038,23 +993,65 @@
     viewMonth: new Date().getMonth(),
     filter: 'all',
     searchQuery: '',
-    selectedId: null
+    selectedId: null,
+    scriptUrl: '',
+    clientId: ''
   };
 
   const $ = s => document.querySelector(s);
   const $$ = s => document.querySelectorAll(s);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function call(fn, ...args) {
-    return new Promise((resolve, reject) => {
-      if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        return reject(new Error('Apps Script not detected. Deploy as a Web App to run live.'));
-      }
-      google.script.run
-        .withSuccessHandler(resolve)
-        .withFailureHandler(err => reject(new Error(err.message || err)))
-        [fn](...args);
+  // Load Configuration
+  function loadConfig() {
+    const defaultCfg = window.CSF_CONFIG || {};
+    State.scriptUrl = localStorage.getItem('csf_script_url') || defaultCfg.APPS_SCRIPT_URL || '';
+    State.clientId = localStorage.getItem('csf_client_id') || defaultCfg.GOOGLE_CLIENT_ID || '';
+  }
+
+  // Unified API Client: Supports both native Google Apps Script and Vercel fetch()
+  async function callApi(action, data = {}) {
+    // 1. Native Apps Script environment
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res && res.ok === false) reject(new Error(res.error || 'Server error'));
+            else resolve(res);
+          })
+          .withFailureHandler(err => reject(new Error(err.message || err)))
+          [action](data);
+      });
+    }
+
+    // 2. Vercel / External environment via fetch
+    if (!State.scriptUrl) {
+      $('#configModal').classList.add('open');
+      throw new Error('Please configure your Google Apps Script Web App URL first.');
+    }
+
+    const payload = {
+      action: action,
+      ...data,
+      userEmail: State.user ? State.user.email : (data.email || ''),
+      userName: State.user ? State.user.name : (data.name || '')
+    };
+
+    const response = await fetch(State.scriptUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: Failed to reach Apps Script Web App.`);
+    }
+
+    const json = await response.json();
+    if (!json.ok) {
+      throw new Error(json.error || 'Unknown API error');
+    }
+    return json.data;
   }
 
   function toIso(y, m, d) {
@@ -1062,15 +1059,104 @@
   }
 
   window.addEventListener('DOMContentLoaded', async () => {
+    loadConfig();
     bindEvents();
-    await initData();
+    checkAuthAndInit();
   });
 
-  async function initData() {
+  // Authentication Initialization
+  function checkAuthAndInit() {
+    // 1. Check if running inside Apps Script
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      initApp();
+      return;
+    }
+
+    // 2. Check cached Google session on Vercel
+    const cachedUser = localStorage.getItem('csf_google_user');
+    if (cachedUser) {
+      try {
+        State.user = JSON.parse(cachedUser);
+        initApp();
+        return;
+      } catch (e) {}
+    }
+
+    // 3. Prompt Google Sign-In
+    showGoogleSignIn();
+  }
+
+  function showGoogleSignIn() {
+    $('#authModal').classList.add('open');
+    if (!State.clientId) {
+      // If client ID not provided, allow instant manual login or config
+      $('#googleSignInButton').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
+          <button class="btn btn-blue" id="btnGuestGoogleLogin" style="width:100%;justify-content:center;padding:10px;">
+            Continue with Google Account
+          </button>
+          <small style="color:var(--text-muted);font-size:11px;">(Or configure Google Client ID via ⚙️ icon)</small>
+        </div>
+      `;
+      $('#btnGuestGoogleLogin').onclick = () => {
+        const email = prompt('Enter your Google email address:');
+        if (email && email.includes('@')) {
+          const name = email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          State.user = { name, email, role: 'member' };
+          localStorage.setItem('csf_google_user', JSON.stringify(State.user));
+          $('#authModal').classList.remove('open');
+          initApp();
+        }
+      };
+      return;
+    }
+
+    // Initialize Google Identity Services
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({
+        client_id: State.clientId,
+        callback: handleGoogleCredentialResponse
+      });
+      google.accounts.id.renderButton(
+        $('#googleSignInButton'),
+        { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 }
+      );
+    } else {
+      setTimeout(showGoogleSignIn, 500);
+    }
+  }
+
+  function handleGoogleCredentialResponse(response) {
+    try {
+      // Decode JWT token from Google
+      const base64Url = response.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+
+      const profile = JSON.parse(jsonPayload);
+      State.user = {
+        name: profile.name,
+        email: profile.email.toLowerCase(),
+        picture: profile.picture,
+        role: 'member'
+      };
+
+      localStorage.setItem('csf_google_user', JSON.stringify(State.user));
+      $('#authModal').classList.remove('open');
+      initApp();
+    } catch (err) {
+      alert('Google authentication error: ' + err.message);
+    }
+  }
+
+  async function initApp() {
     try {
       $('#userName').textContent = 'Connecting...';
-      const data = await call('getBootstrapData');
-      State.user = data.currentUser;
+      const data = await callApi('getBootstrapData');
+      
+      State.user = data.currentUser || State.user;
       State.settings = data.settings || {};
       State.events = data.events || [];
       State.todayStr = data.serverToday || toIso(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
@@ -1079,7 +1165,6 @@
       State.viewYear = ty;
       State.viewMonth = tm - 1;
 
-      // Update Top Calendar Icon to today's date
       const dObj = new Date(ty, tm - 1, Number(State.todayStr.split('-')[2]));
       $('#headerIconMonth').textContent = dObj.toLocaleString('en', { month: 'short' }).toUpperCase();
       $('#headerIconDate').textContent = dObj.getDate();
@@ -1088,17 +1173,23 @@
       renderStats();
       renderCalendar();
     } catch (err) {
-      alert('Initialization error: ' + err.message);
-      $('#userName').textContent = 'Offline';
+      $('#userName').textContent = 'Connection Offline';
+      console.error(err);
     }
   }
 
   function renderUser() {
+    if (!State.user) return;
     $('#userName').textContent = State.user.name;
-    $('#userAvatar').textContent = (State.user.name || 'U').charAt(0).toUpperCase();
+    
+    if (State.user.picture) {
+      $('#userAvatar').innerHTML = `<img src="${esc(State.user.picture)}" style="width:100%;height:100%;border-radius:50%;">`;
+    } else {
+      $('#userAvatar').textContent = (State.user.name || 'U').charAt(0).toUpperCase();
+    }
     
     const pill = $('#userRolePill');
-    pill.textContent = State.user.role.toUpperCase();
+    pill.textContent = (State.user.role || 'member').toUpperCase();
     pill.className = 'role-pill ' + (State.user.role === 'admin' ? 'admin' : 'member');
 
     if (State.user.role === 'admin') {
@@ -1128,7 +1219,6 @@
 
     const cells = [];
 
-    // Previous month filler days
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const pDay = prevMonthTotalDays - i;
       cells.push(`
@@ -1138,12 +1228,10 @@
       `);
     }
 
-    // Days in current month
     for (let d = 1; d <= totalDays; d++) {
       const dateStr = toIso(State.viewYear, State.viewMonth, d);
       const isToday = (dateStr === State.todayStr);
 
-      // Filter events for this day
       const dayEvents = State.events.filter(e => {
         if (e.Date !== dateStr) return false;
         if (State.filter === 'approved' && e.Status !== 'Approved') return false;
@@ -1183,7 +1271,6 @@
       `);
     }
 
-    // Next month filler days to complete grid
     const totalSlots = cells.length;
     const remaining = (7 - (totalSlots % 7)) % 7;
     for (let n = 1; n <= remaining; n++) {
@@ -1199,7 +1286,6 @@
   }
 
   function bindGridClicks() {
-    // Clicking a day cell opens Create Event
     $$('.cal-cell[data-date]').forEach(cell => {
       cell.onclick = e => {
         if (e.target.closest('[data-id]')) return;
@@ -1207,7 +1293,6 @@
       };
     });
 
-    // Clicking an event chip opens Event Details
     $$('[data-id]').forEach(chip => {
       chip.onclick = e => {
         e.stopPropagation();
@@ -1219,7 +1304,7 @@
   function openCreateDialog(dateStr) {
     $('#createEventForm').reset();
     $('#eventDate').value = dateStr || State.todayStr;
-    $('#eventCoord').value = State.user.name;
+    $('#eventCoord').value = State.user ? State.user.name : '';
     $('#eventArrangeMeet').checked = true;
     $('#createEventModal').classList.add('open');
   }
@@ -1233,7 +1318,7 @@
     $('#detMeetBox').style.display = 'none';
 
     try {
-      const data = await call('getEventDetails', eventId);
+      const data = await callApi('getEventDetails', { eventId });
       const e = data.event;
 
       $('#detTitle').textContent = e.Title;
@@ -1241,7 +1326,6 @@
       $('#detStatus').textContent = e.Status;
       $('#detStatus').className = 'role-pill ' + String(e.Status).toLowerCase();
 
-      // Google Meet Box
       if (e.MeetLink) {
         $('#detMeetBox').style.display = 'flex';
         $('#detMeetLink').href = e.MeetLink;
@@ -1266,8 +1350,7 @@
         <div class="dl-val">${esc(r[1])}</div>
       `).join('');
 
-      // Admin Decision Panel
-      const isAdmin = (State.user.role === 'admin');
+      const isAdmin = (State.user && State.user.role === 'admin');
       $('#adminDecisionBox').classList.toggle('hidden', !isAdmin);
       if (isAdmin) {
         $('#adminDecisionNote').value = e.AdminComment || e.HODComment || '';
@@ -1302,7 +1385,7 @@
   async function refreshUserList() {
     $('#userTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading users...</td></tr>';
     try {
-      const list = await call('getAllUsers');
+      const list = await callApi('getAllUsers');
       if (!list.length) {
         $('#userTableBody').innerHTML = '<tr><td colspan="4">No users registered yet.</td></tr>';
         return;
@@ -1326,7 +1409,7 @@
           const email = s.dataset.email;
           const role = s.value;
           try {
-            await call('updateUserRole', email, role);
+            await callApi('updateUserRole', { targetEmail: email, newRole: role });
             alert(`Updated ${email} to ${role.toUpperCase()}.`);
             await refreshUserList();
           } catch (e) {
@@ -1341,7 +1424,6 @@
   }
 
   function bindEvents() {
-    // Navigation
     $('#btnPrev').onclick = () => {
       if (--State.viewMonth < 0) { State.viewMonth = 11; State.viewYear--; }
       renderCalendar();
@@ -1357,10 +1439,8 @@
       renderCalendar();
     };
 
-    // Sidebar Create Event Button
     $('#btnCreateEvent').onclick = () => openCreateDialog(State.todayStr);
 
-    // Filters
     $$('.filter-item').forEach(item => {
       item.onclick = () => {
         $$('.filter-item').forEach(f => f.classList.remove('active'));
@@ -1370,13 +1450,11 @@
       };
     });
 
-    // Search input
     $('#calSearchInput').oninput = e => {
       State.searchQuery = e.target.value.trim();
       renderCalendar();
     };
 
-    // Form Submit (Create Event)
     $('#createEventForm').onsubmit = async e => {
       e.preventDefault();
       const payload = {
@@ -1398,7 +1476,7 @@
       $('#btnSaveEvent').textContent = 'Submitting...';
 
       try {
-        const res = await call('submitEvent', payload);
+        const res = await callApi('submitEvent', { payload });
         alert(res.message || 'Event proposed successfully!');
         $('#createEventModal').classList.remove('open');
         await reloadData();
@@ -1410,16 +1488,14 @@
       }
     };
 
-    // Admin Decision Buttons
     $('#btnApproveEvent').onclick = () => submitDecision('Approved');
     $('#btnRejectEvent').onclick = () => submitDecision('Rejected');
 
-    // Post comment
     $('#btnPostComment').onclick = async () => {
       const t = $('#inputNewComment').value.trim();
       if (!t) return;
       try {
-        const comments = await call('addComment', State.selectedId, t);
+        const comments = await callApi('addComment', { eventId: State.selectedId, text: t });
         $('#inputNewComment').value = '';
         renderComments(comments);
       } catch (e) {
@@ -1427,7 +1503,6 @@
       }
     };
 
-    // Admin Buttons
     $('#btnOpenUserManagement').onclick = openUsersModal;
     $('#btnDoAddUser').onclick = async () => {
       const n = $('#addUserName').value.trim();
@@ -1435,7 +1510,7 @@
       const r = $('#addUserRole').value;
       if (!em) return alert('Email required');
       try {
-        await call('addUser', n, em, r);
+        await callApi('addUser', { name: n, email: em, role: r });
         alert(`User ${em} added as ${r.toUpperCase()}.`);
         $('#addUserName').value = '';
         $('#addUserEmail').value = '';
@@ -1448,14 +1523,39 @@
     $('#btnSendDailyDigest').onclick = async () => {
       if (!confirm("Send today's daily event digest email to all registered members right now?")) return;
       try {
-        const res = await call('triggerDailyNotificationNow');
+        const res = await callApi('triggerDailyNotificationNow');
         alert(`Digest Sent: ${res.sent} team members notified for ${res.eventsCount} events.`);
       } catch (e) {
         alert('Failed: ' + e.message);
       }
     };
 
-    // Close Modals
+    // Logout
+    $('#btnLogout').onclick = () => {
+      localStorage.removeItem('csf_google_user');
+      State.user = null;
+      location.reload();
+    };
+
+    // Config settings modal
+    $('#btnOpenConfig').onclick = () => {
+      $('#cfgScriptUrl').value = State.scriptUrl;
+      $('#cfgClientId').value = State.clientId;
+      $('#configModal').classList.add('open');
+    };
+
+    $('#btnSaveConfig').onclick = () => {
+      const sUrl = $('#cfgScriptUrl').value.trim();
+      const cId = $('#cfgClientId').value.trim();
+      localStorage.setItem('csf_script_url', sUrl);
+      localStorage.setItem('csf_client_id', cId);
+      State.scriptUrl = sUrl;
+      State.clientId = cId;
+      $('#configModal').classList.remove('open');
+      alert('Connection settings saved! Reconnecting...');
+      checkAuthAndInit();
+    };
+
     $$('[data-close]').forEach(btn => {
       btn.onclick = () => {
         const id = btn.dataset.close;
@@ -1470,7 +1570,7 @@
       return alert('Rejection reason is mandatory so the organizer knows what to adjust.');
     }
     try {
-      await call('setEventStatus', State.selectedId, status, note, '');
+      await callApi('setEventStatus', { eventId: State.selectedId, status: status, adminComment: note });
       alert(`Event status updated to "${status}".`);
       $('#eventDetailsModal').classList.remove('open');
       await reloadData();
@@ -1480,7 +1580,7 @@
   }
 
   async function reloadData() {
-    const data = await call('getBootstrapData');
+    const data = await callApi('getBootstrapData');
     State.events = data.events || [];
     renderStats();
     renderCalendar();
