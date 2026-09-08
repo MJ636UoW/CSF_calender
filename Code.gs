@@ -88,6 +88,10 @@ function handleApiRequest_(action, data) {
         result = setEventStatus(data.eventId, data.status, data.adminComment, data.customMeetLink, userEmail);
         break;
 
+      case 'broadcastEventNotification':
+        result = broadcastEventNotification(data.eventId, userEmail);
+        break;
+
       case 'addComment':
         result = addComment(data.eventId, data.text, userEmail, userName);
         break;
@@ -459,6 +463,23 @@ function setEventStatus(eventId, status, adminComment, customMeetLink, clientEma
     } catch (calErr) {
       Logger.log('Calendar sync notice: ' + calErr.message);
     }
+
+    // AUTOMATIC BROADCAST NOTIFICATION TO ALL MEMBERS AND ADMINS
+    let emailResult = { sent: 0 };
+    try {
+      emailResult = sendEventApprovalBroadcast_(event, user.name || 'Admin', adminComment);
+    } catch (emailErr) {
+      Logger.log('Approval email broadcast error: ' + emailErr.message);
+    }
+
+    return {
+      ok: true,
+      status: status,
+      conflicts: conflicts,
+      meetLink: generatedMeetLink,
+      emailsSent: emailResult.sent,
+      message: `Event approved successfully! Notification email dispatched to ${emailResult.sent} members.`
+    };
   } else if (status === 'Rejected' && event.CalendarEventID) {
     try {
       removeCalendarEvent_(event.CalendarEventID);
@@ -474,6 +495,171 @@ function setEventStatus(eventId, status, adminComment, customMeetLink, clientEma
     conflicts: conflicts,
     meetLink: generatedMeetLink
   };
+}
+
+/**
+ * Broadcast event announcement email to all registered members and admins.
+ * Can be called manually by Admin from UI or automatically on approval.
+ */
+function broadcastEventNotification(eventId, clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
+  const user = getUserByEmail_(email);
+  if (user.role !== ROLES.ADMIN) {
+    throw new Error('Access denied: Only an Admin can broadcast event announcements.');
+  }
+
+  const allEvents = getAllRawEvents_();
+  const event = allEvents.find(e => String(e.EventID) === String(eventId));
+  if (!event) throw new Error('Event not found.');
+
+  const res = sendEventApprovalBroadcast_(event, user.name || 'Admin', 'Official Announcement');
+  return {
+    ok: true,
+    sent: res.sent,
+    total: res.total,
+    message: `Announcement email sent to ${res.sent} team members & admins.`
+  };
+}
+
+function sendEventApprovalBroadcast_(event, approverName, adminComment) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const userSheet = ss.getSheetByName(SHEETS.USERS);
+  const emailSet = new Set();
+
+  if (userSheet) {
+    const userData = userSheet.getDataRange().getDisplayValues();
+    for (let i = 1; i < userData.length; i++) {
+      const em = (userData[i][1] || '').trim().toLowerCase();
+      const status = (userData[i][3] || 'Active').trim().toLowerCase();
+      if (em && em.includes('@') && status !== 'disabled') {
+        emailSet.add(em);
+      }
+    }
+  }
+
+  // Always ensure Mandar and event coordinators/submitters are included
+  emailSet.add('mandarj2412@gmail.com');
+  if (event.SubmittedBy && String(event.SubmittedBy).includes('@')) {
+    emailSet.add(String(event.SubmittedBy).trim().toLowerCase());
+  }
+  if (event.CoordinatorEmail && String(event.CoordinatorEmail).includes('@')) {
+    emailSet.add(String(event.CoordinatorEmail).trim().toLowerCase());
+  }
+
+  const recipients = Array.from(emailSet);
+  if (recipients.length === 0) return { ok: true, sent: 0, total: 0 };
+
+  const meetSection = event.MeetLink ? `
+    <div style="margin: 20px 0; background: #e8f0fe; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #c2e7ff;">
+      <h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 15px;">📹 Google Meet Video Call Link</h4>
+      <p style="margin: 0 0 12px 0; color: #5f6368; font-size: 13px;">Official video conference link for this event:</p>
+      <a href="${event.MeetLink}" target="_blank" style="background: #1a73e8; color: #ffffff; text-decoration: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+        Join Google Meet
+      </a>
+      <div style="margin-top: 8px; font-size: 12px; color: #1a73e8; word-break: break-all;">${event.MeetLink}</div>
+    </div>
+  ` : '';
+
+  const commentSection = adminComment ? `
+    <div style="margin: 16px 0; background: #f8fafc; border-left: 4px solid #1a73e8; padding: 12px 16px; border-radius: 4px;">
+      <strong style="color: #202124; font-size: 13px;">Admin Remarks (${escHtml_(approverName)}):</strong>
+      <p style="margin: 4px 0 0 0; color: #3c4043; font-size: 13px;">${escHtml_(adminComment)}</p>
+    </div>
+  ` : '';
+
+  const emailBody = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px 0;">
+      <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        
+        <!-- Header -->
+        <div style="background: #0f172a; padding: 24px 30px; text-align: left;">
+          <span style="background: #22c55e; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;">
+            ✓ Event Approved &amp; Scheduled
+          </span>
+          <h1 style="color: #ffffff; font-size: 22px; margin: 0; font-weight: 700;">
+            ${escHtml_(event.Title)}
+          </h1>
+          <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
+            ${escHtml_(event.Type || 'CSF Event')} • Approved by ${escHtml_(approverName)}
+          </p>
+        </div>
+
+        <!-- Body Details -->
+        <div style="padding: 28px 30px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px;">
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; width: 130px; font-weight: 600;">📅 Date:</td>
+              <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${escHtml_(event.Date)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">⏰ Time:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.StartTime)} – ${escHtml_(event.EndTime)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">📍 Venue / Room:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Venue || 'TBD')}</td>
+            </tr>
+            ${event.Speaker ? `
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">🎤 Speaker:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Speaker)}</td>
+            </tr>` : ''}
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👥 Audience:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.TargetAudience || 'All Faculty / Members')}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👤 Coordinator:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Coordinator || 'CSF Team')}</td>
+            </tr>
+          </table>
+
+          ${meetSection}
+          ${commentSection}
+
+          ${event.Description ? `
+          <div style="margin: 16px 0; padding: 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #334155; font-size: 13px; display: block; margin-bottom: 4px;">Description:</strong>
+            <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.5;">${escHtml_(event.Description)}</p>
+          </div>` : ''}
+
+          ${event.Guide ? `
+          <div style="margin: 16px 0; padding: 14px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #334155; font-size: 13px; display: block; margin-bottom: 4px;">Guidelines & Instructions:</strong>
+            <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.5;">${escHtml_(event.Guide)}</p>
+          </div>` : ''}
+
+          <div style="text-align: center; margin: 28px 0 10px 0;">
+            <a href="https://csf-calender.vercel.app" target="_blank" style="background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+              View Full CSF Calendar
+            </a>
+          </div>
+
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
+            CSF Event Planning &amp; Approval System • Official Notification to all registered members and admins
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const subject = `🎉 [CSF Event Approved] ${event.Title} - ${event.Date}`;
+
+  let count = 0;
+  recipients.forEach(r => {
+    try {
+      MailApp.sendEmail({ to: r, subject: subject, htmlBody: emailBody });
+      count++;
+    } catch (e) {
+      Logger.log(`Failed sending email to ${r}: ${e.message}`);
+    }
+  });
+
+  return { ok: true, sent: count, total: recipients.length };
 }
 
 function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
@@ -819,6 +1005,8 @@ function rowToObject_(h, r) {
     if (v instanceof Date) {
       if (['Date', 'AlternativeDate'].includes(k)) {
         v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      } else if (['StartTime', 'EndTime'].includes(k)) {
+        v = Utilities.formatDate(v, Session.getScriptTimeZone(), 'hh:mm a');
       } else {
         v = Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
       }

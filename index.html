@@ -980,6 +980,9 @@
     </div>
 
     <div class="dialog-footer">
+      <button type="button" class="btn btn-blue" id="btnBroadcastApprovedEvent" style="display:none;align-items:center;gap:6px;">
+        <span>📧 Broadcast Mail to All Members</span>
+      </button>
       <button class="btn btn-ghost" data-close="eventDetailsModal">Close</button>
     </div>
   </div>
@@ -1340,6 +1343,30 @@
     $('#statToday').textContent = today;
   }
 
+  function formatEventTime(t) {
+    if (!t) return '';
+    const s = String(t).trim();
+    if (s.includes('T')) {
+      const part = s.split('T')[1];
+      if (part) {
+        const [hh, mm] = part.split(':');
+        let h = parseInt(hh, 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${mm} ${ampm}`;
+      }
+    }
+    const match = s.match(/^(\d{1,2}):(\d{2})/);
+    if (match && !s.toLowerCase().includes('m')) {
+      let h = parseInt(match[1], 10);
+      const mm = match[2];
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${mm} ${ampm}`;
+    }
+    return s;
+  }
+
   function renderCalendar() {
     const firstDayIndex = new Date(State.viewYear, State.viewMonth, 1).getDay();
     const totalDays = new Date(State.viewYear, State.viewMonth + 1, 0).getDate();
@@ -1385,7 +1412,7 @@
         const hasMeet = !!e.MeetLink || String(e.ArrangeMeet).toUpperCase() === 'TRUE';
         return `
           <div class="gcal-chip ${st}" data-id="${e.EventID}" title="${esc(e.Title)}">
-            <span class="chip-time">${esc(e.StartTime)}</span>
+            <span class="chip-time">${esc(formatEventTime(e.StartTime))}</span>
             <span class="chip-title">${hasMeet ? '📹 ' : ''}${esc(e.Title)}</span>
           </div>
         `;
@@ -1463,7 +1490,7 @@
 
       const rows = [
         ['Date', e.Date],
-        ['Time', `${e.StartTime} – ${e.EndTime}`],
+        ['Time', `${formatEventTime(e.StartTime)} – ${formatEventTime(e.EndTime)}`],
         ['Venue', e.Venue],
         ['Coordinator', e.Coordinator || '—'],
         ['Speaker', e.Speaker || '—'],
@@ -1480,9 +1507,15 @@
       `).join('');
 
       const isAdmin = (State.user && State.user.role === 'admin');
+      const isApproved = String(e.Status || '').toLowerCase() === 'approved';
+      
       $('#adminDecisionBox').classList.toggle('hidden', !isAdmin);
       if (isAdmin) {
         $('#adminDecisionNote').value = e.AdminComment || e.HODComment || '';
+      }
+
+      if ($('#btnBroadcastApprovedEvent')) {
+        $('#btnBroadcastApprovedEvent').style.display = (isAdmin && isApproved) ? 'inline-flex' : 'none';
       }
 
       renderComments(data.comments || []);
@@ -1700,6 +1733,25 @@
     if ($('#btnTestBackendConnection')) $('#btnTestBackendConnection').onclick = () => testBackendConnection();
     if ($('#btnSaveBackendUrl')) $('#btnSaveBackendUrl').onclick = saveBackendUrl;
 
+    if ($('#btnBroadcastApprovedEvent')) {
+      $('#btnBroadcastApprovedEvent').onclick = async () => {
+        if (!State.selectedId) return;
+        if (!confirm("Send event announcement email to all members and admins now?")) return;
+        const btn = $('#btnBroadcastApprovedEvent');
+        btn.disabled = true;
+        btn.textContent = 'Sending emails...';
+        try {
+          const res = await callApi('broadcastEventNotification', { eventId: State.selectedId });
+          alert(res.message || `Announcement email dispatched to ${res.sent} members & admins!`);
+        } catch (e) {
+          alert('Failed sending email: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '📧 Broadcast Mail to All Members';
+        }
+      };
+    }
+
     $$('[data-close]').forEach(btn => {
       btn.onclick = () => {
         const id = btn.dataset.close;
@@ -1728,8 +1780,9 @@
       return alert('Rejection reason is mandatory so the organizer knows what to adjust.');
     }
     try {
-      await callApi('setEventStatus', { eventId: State.selectedId, status: status, adminComment: note });
-      alert(`Event status updated to "${status}".`);
+      const res = await callApi('setEventStatus', { eventId: State.selectedId, status: status, adminComment: note });
+      const msg = res.message || (status === 'Approved' ? `Event approved! Notification email sent to ${res.emailsSent || 0} members.` : `Event status updated to "${status}".`);
+      alert(msg);
       $('#eventDetailsModal').classList.remove('open');
       await reloadData();
     } catch (e) {
