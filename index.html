@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
@@ -640,19 +641,27 @@
       .cal-cell { min-height: 75px; padding: 2px; }
       .gcal-chip { font-size: 9px; padding: 2px; }
 
-      /* Mobile Modal: Bottom Sheet style */
+      /* Mobile Modal: Bottom Sheet style that respects mobile browser toolbars */
       .modal-overlay {
         padding: 0;
         align-items: flex-end;
+        height: 100dvh;
       }
       .gcal-dialog {
         width: 100%;
-        max-height: 90vh;
+        max-height: calc(100dvh - 28px);
         border-radius: 20px 20px 0 0;
+        margin-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      .dialog-body {
+        padding: 14px 16px;
+        padding-bottom: 24px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
       .form-grid-2 { grid-template-columns: 1fr; gap: 8px; }
       .dialog-footer {
-        padding: 12px 16px;
+        padding: 12px 16px max(14px, env(safe-area-inset-bottom, 14px));
       }
       .dialog-footer .btn {
         flex: 1;
@@ -693,13 +702,24 @@
     <div class="user-profile-badge" id="userProfileWrap">
       <div class="user-avatar" id="userAvatar">U</div>
       <div class="user-meta">
-        <span class="user-display-name" id="userName">Connecting...</span>
+        <span class="user-display-name" id="userName">Mandar</span>
         <span class="role-pill member" id="userRolePill">MEMBER</span>
       </div>
       <button class="btn-ghost" id="btnLogout" style="padding:2px 8px;font-size:11px;border-radius:12px;margin-left:2px;cursor:pointer;">Switch</button>
     </div>
+
+    <button class="icon-btn" id="btnOpenSettings" title="Backend Connection Settings" style="font-size:17px;cursor:pointer;">⚙️</button>
   </div>
 </header>
+
+<!-- BACKEND STATUS BANNER -->
+<div id="backendNoticeBanner" style="display:none;background:#fef7e0;color:#8f4700;padding:8px 16px;font-size:13px;border-bottom:1px solid #feefc3;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:9;flex-shrink:0;">
+  <div style="display:flex;align-items:center;gap:8px;overflow:hidden;">
+    <span style="font-size:16px;flex-shrink:0;">⚠️</span>
+    <span id="backendNoticeText" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Google Apps Script Backend not reachable. Showing offline calendar.</span>
+  </div>
+  <button id="btnBannerSetup" style="background:#b06000;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;flex-shrink:0;">Connect Backend</button>
+</div>
 
 <!-- MAIN WORKSPACE -->
 <div class="main-layout">
@@ -1006,15 +1026,47 @@
       </div>
     </div>
 
+<!-- ========================================================== -->
+<!-- MODAL: BACKEND CONNECTION SETTINGS -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="backendSettingsModal">
+  <div class="gcal-dialog" style="max-width: 520px;">
+    <div class="dialog-header">
+      <h3>⚙️ Google Backend Connection</h3>
+      <button class="btn-close" data-close="backendSettingsModal">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div style="background:#e8f0fe;color:#1557b0;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.5;margin-bottom:14px;border:1px solid #c2e7ff;">
+        <strong>How to link your Google Apps Script:</strong><br>
+        1. Open your Apps Script project (<code>CSF_calendar 2026</code>).<br>
+        2. Click <strong>Deploy &gt; Manage deployments</strong>.<br>
+        3. Click ✏️ (Edit). Ensure <strong>Who has access</strong> is set to <strong>Anyone</strong> (crucial for Google Sheets sync).<br>
+        4. Copy the <strong>Web app URL</strong> and paste it below.
+      </div>
+      
+      <div class="form-row">
+        <label>Google Apps Script Web App URL</label>
+        <input type="url" id="settingsBackendUrlInput" placeholder="https://script.google.com/macros/s/.../exec" style="font-size:13px;">
+      </div>
+
+      <div id="backendTestResult" style="display:none;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;word-break:break-word;"></div>
+    </div>
     <div class="dialog-footer">
-      <button class="btn btn-ghost" data-close="userMgmtModal">Done</button>
+      <button type="button" class="btn btn-ghost" id="btnTestBackendConnection">Test Connection</button>
+      <button type="button" class="btn btn-blue" id="btnSaveBackendUrl">Save &amp; Connect</button>
     </div>
   </div>
 </div>
 
 <script>
-  // DEFAULT HARDCODED BACKEND URL (No user will ever be asked for this!)
+  // DEFAULT HARDCODED BACKEND URL
   const DEFAULT_BACKEND_URL = "https://script.google.com/macros/s/AKfycbypxTUlzzY09pkothpZ_IyvChXk0vkrnJhOxzRiiF1Ij6DSrn89YFmKSpYHpNAskSdwA/exec";
+
+  function getActiveBackendUrl() {
+    return localStorage.getItem('csf_script_url')
+      || (window.CSF_CONFIG && window.CSF_CONFIG.APPS_SCRIPT_URL)
+      || DEFAULT_BACKEND_URL;
+  }
 
   const State = {
     user: null,
@@ -1026,7 +1078,7 @@
     filter: 'all',
     searchQuery: '',
     selectedId: null,
-    scriptUrl: DEFAULT_BACKEND_URL
+    scriptUrl: getActiveBackendUrl()
   };
 
   const $ = s => document.querySelector(s);
@@ -1046,6 +1098,11 @@
       });
     }
 
+    const currentUrl = State.scriptUrl || getActiveBackendUrl();
+    if (!currentUrl) {
+      throw new Error('Backend URL not configured.');
+    }
+
     const payload = {
       action: action,
       ...data,
@@ -1053,13 +1110,16 @@
       userName: State.user ? State.user.name : (data.name || '')
     };
 
-    const response = await fetch(State.scriptUrl, {
+    const response = await fetch(currentUrl, {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('HTTP 404: Web App not found. In Apps Script, set "Who has access" to "Anyone" and verify deployment URL.');
+      }
       throw new Error(`HTTP ${response.status}: Failed to reach backend.`);
     }
 
@@ -1117,30 +1177,124 @@
     initApp();
   }
 
-  async function initApp() {
+  function setBackendStatus(isOnline, errMessage = '') {
+    const banner = $('#backendNoticeBanner');
+    const noticeText = $('#backendNoticeText');
+    if (!banner) return;
+    if (isOnline) {
+      banner.style.display = 'none';
+    } else {
+      banner.style.display = 'flex';
+      if (errMessage) {
+        noticeText.textContent = errMessage.includes('404')
+          ? '⚠️ Backend 404: In Apps Script, set "Who has access" to "Anyone" & paste Web App URL.'
+          : `⚠️ Backend sync error: ${errMessage}`;
+      } else {
+        noticeText.textContent = '⚠️ Google Sheets Backend not connected. Showing offline calendar.';
+      }
+    }
+  }
+
+  function openBackendSettings() {
+    $('#settingsBackendUrlInput').value = State.scriptUrl || getActiveBackendUrl();
+    const resultBox = $('#backendTestResult');
+    resultBox.style.display = 'none';
+    $('#backendSettingsModal').classList.add('open');
+  }
+
+  async function testBackendConnection(urlToTest) {
+    const url = (urlToTest || $('#settingsBackendUrlInput').value).trim();
+    const resultBox = $('#backendTestResult');
+    resultBox.style.display = 'block';
+    resultBox.style.background = '#fef7e0';
+    resultBox.style.color = '#b06000';
+    resultBox.textContent = '⏳ Testing connection to Google Apps Script...';
+
+    if (!url) {
+      resultBox.style.background = '#fce8e6';
+      resultBox.style.color = '#c5221f';
+      resultBox.textContent = '❌ Please enter a Google Apps Script Web App URL.';
+      return false;
+    }
+
     try {
-      $('#userName').textContent = 'Connecting...';
+      const resp = await fetch(url, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getBootstrapData', userEmail: State.user ? State.user.email : '' }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+      });
+
+      if (!resp.ok) {
+        if (resp.status === 404) {
+          throw new Error('Google returned HTTP 404. Make sure deployment has "Who has access: Anyone"!');
+        }
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
+      const json = await resp.json();
+      if (!json.ok) throw new Error(json.error || 'Server error');
+
+      resultBox.style.background = '#e6f4ea';
+      resultBox.style.color = '#137333';
+      const count = json.data && json.data.events ? json.data.events.length : 0;
+      resultBox.textContent = `✅ Success! Connected to Google Sheets backend. (${count} events loaded)`;
+      return true;
+    } catch (err) {
+      resultBox.style.background = '#fce8e6';
+      resultBox.style.color = '#c5221f';
+      resultBox.textContent = '❌ Connection failed: ' + err.message;
+      return false;
+    }
+  }
+
+  async function saveBackendUrl() {
+    const url = $('#settingsBackendUrlInput').value.trim();
+    if (!url) return alert('Please enter a valid Apps Script Web App URL.');
+    
+    State.scriptUrl = url;
+    localStorage.setItem('csf_script_url', url);
+
+    const success = await testBackendConnection(url);
+    if (success) {
+      setTimeout(() => {
+        $('#backendSettingsModal').classList.remove('open');
+        initApp();
+      }, 900);
+    }
+  }
+
+  async function initApp() {
+    // 1. Instantly display user info and initialize calendar view
+    renderUser();
+    renderCalendar();
+
+    // 2. Set current date on header icon
+    const today = new Date();
+    State.todayStr = toIso(today.getFullYear(), today.getMonth(), today.getDate());
+    State.viewYear = today.getFullYear();
+    State.viewMonth = today.getMonth();
+    $('#headerIconMonth').textContent = today.toLocaleString('en', { month: 'short' }).toUpperCase();
+    $('#headerIconDate').textContent = today.getDate();
+
+    // 3. Attempt to fetch fresh data from Google Sheets backend
+    try {
       const data = await callApi('getBootstrapData');
       
       State.user = data.currentUser || State.user;
       State.settings = data.settings || {};
       State.events = data.events || [];
-      State.todayStr = data.serverToday || toIso(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-
-      const [ty, tm] = State.todayStr.split('-').map(Number);
-      State.viewYear = ty;
-      State.viewMonth = tm - 1;
-
-      const dObj = new Date(ty, tm - 1, Number(State.todayStr.split('-')[2]));
-      $('#headerIconMonth').textContent = dObj.toLocaleString('en', { month: 'short' }).toUpperCase();
-      $('#headerIconDate').textContent = dObj.getDate();
+      if (data.serverToday) State.todayStr = data.serverToday;
 
       renderUser();
       renderStats();
       renderCalendar();
+      setBackendStatus(true);
     } catch (err) {
-      $('#userName').textContent = 'Connecting...';
-      console.error(err);
+      console.warn('Backend sync failed:', err);
+      setBackendStatus(false, err.message);
+      renderUser();
+      renderStats();
+      renderCalendar();
     }
   }
 
@@ -1517,6 +1671,12 @@
       State.user = null;
       showGoogleSignIn();
     };
+
+    // Backend Connection Settings Handlers
+    $('#btnOpenSettings').onclick = openBackendSettings;
+    $('#btnBannerSetup').onclick = openBackendSettings;
+    $('#btnTestBackendConnection').onclick = () => testBackendConnection();
+    $('#btnSaveBackendUrl').onclick = saveBackendUrl;
 
     $$('[data-close]').forEach(btn => {
       btn.onclick = () => {
