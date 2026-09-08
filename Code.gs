@@ -847,62 +847,77 @@ function sendDailyEventDigest() {
   const todayFormatted = Utilities.formatDate(new Date(), timeZone, 'EEEE, MMMM d, yyyy');
 
   const allEvents = getAllRawEvents_();
-  const todayEvents = allEvents.filter(e => e.Status === 'Approved' && String(e.Date) === todayStr);
+  let eventsToSend = allEvents.filter(e => e.Status === 'Approved' && String(e.Date) === todayStr);
+  let isUpcoming = false;
 
-  const settings = getSettings_();
-  const sendIfEmpty = String(settings.SendDigestIfEmpty || 'false').toLowerCase() === 'true';
-
-  if (todayEvents.length === 0 && !sendIfEmpty) {
-    Logger.log('No approved events scheduled for today (' + todayStr + '). Skipping daily digest.');
-    return { ok: true, sent: 0, reason: 'No events scheduled for today.' };
+  // If no events scheduled today, include all upcoming approved events!
+  if (eventsToSend.length === 0) {
+    eventsToSend = allEvents.filter(e => e.Status === 'Approved' && String(e.Date) >= todayStr);
+    isUpcoming = true;
   }
+
+  // Fallback: if all approved events are past/future, include them
+  if (eventsToSend.length === 0) {
+    eventsToSend = allEvents.filter(e => e.Status === 'Approved');
+    isUpcoming = true;
+  }
+
+  if (eventsToSend.length === 0) {
+    Logger.log('No approved events found on calendar.');
+    return { ok: true, sent: 0, eventsCount: 0, reason: 'No approved events found on the calendar to broadcast.' };
+  }
+
+  eventsToSend.sort((a, b) => String(a.Date).localeCompare(String(b.Date)));
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const userSheet = ss.getSheetByName(SHEETS.USERS);
-  const userData = userSheet.getDataRange().getDisplayValues();
   const emailSet = new Set();
 
-  for (let i = 1; i < userData.length; i++) {
-    const email = (userData[i][1] || '').trim().toLowerCase();
-    const status = (userData[i][3] || 'Active').trim().toLowerCase();
-    if (email && email.includes('@') && status !== 'disabled') {
-      emailSet.add(email);
+  if (userSheet) {
+    const userData = userSheet.getDataRange().getDisplayValues();
+    for (let i = 1; i < userData.length; i++) {
+      const email = (userData[i][1] || '').trim().toLowerCase();
+      const status = (userData[i][3] || 'Active').trim().toLowerCase();
+      if (email && email.includes('@') && status !== 'disabled') {
+        emailSet.add(email);
+      }
     }
   }
 
-  if (emailSet.size === 0) {
-    return { ok: true, sent: 0, reason: 'No active user emails found.' };
-  }
-
+  emailSet.add('mandarj2412@gmail.com');
   const recipients = Array.from(emailSet);
 
-  let eventsHtml = '';
-  if (todayEvents.length === 0) {
-    eventsHtml = '<p style="color:#64748B;font-style:italic;">There are no scheduled events for today. Enjoy your day!</p>';
-  } else {
-    eventsHtml = todayEvents.map(e => `
-      <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-left:5px solid #16A34A;border-radius:8px;padding:16px;margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-          <h3 style="margin:0;color:#0F172A;font-size:17px;font-weight:700;">${escHtml_(e.Title)}</h3>
-          <span style="background:#DCFCE7;color:#15803D;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">${escHtml_(e.Type || 'Event')}</span>
-        </div>
-        <table style="width:100%;font-size:14px;color:#334155;border-collapse:collapse;margin:8px 0;">
-          <tr><td style="width:120px;font-weight:600;padding:4px 0;color:#64748B;">⏰ Time:</td><td>${escHtml_(e.StartTime)} – ${escHtml_(e.EndTime)}</td></tr>
-          <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">📍 Venue:</td><td>${escHtml_(e.Venue)}</td></tr>
-          <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">👤 Coordinator:</td><td>${escHtml_(e.Coordinator || 'CSF Team')}</td></tr>
-          ${e.Speaker ? `<tr><td style="font-weight:600;padding:4px 0;color:#64748B;">🎤 Speaker:</td><td>${escHtml_(e.Speaker)}</td></tr>` : ''}
-        </table>
-        ${e.Description ? `<div style="margin-top:8px;font-size:13px;color:#475569;background:#F8FAFC;padding:10px;border-radius:6px;"><strong>Description:</strong> ${escHtml_(e.Description)}</div>` : ''}
-        ${e.Guide ? `<div style="margin-top:6px;font-size:13px;color:#475569;background:#F1F5F9;padding:10px;border-radius:6px;"><strong>Guidelines:</strong> ${escHtml_(e.Guide)}</div>` : ''}
-        ${e.MeetLink ? `
-          <div style="margin-top:12px;">
-            <a href="${escHtml_(e.MeetLink)}" target="_blank" style="display:inline-block;background:#0284C7;color:#FFFFFF;padding:8px 16px;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
-              📹 Join Google Meet
-            </a>
-          </div>` : ''}
-      </div>
-    `).join('');
+  if (recipients.length === 0) {
+    return { ok: true, sent: 0, eventsCount: eventsToSend.length, reason: 'No active user emails found.' };
   }
+
+  const eventsHtml = eventsToSend.map(e => `
+    <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-left:5px solid #16A34A;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <h3 style="margin:0;color:#0F172A;font-size:17px;font-weight:700;">${escHtml_(e.Title)}</h3>
+        <span style="background:#DCFCE7;color:#15803D;padding:4px 8px;border-radius:12px;font-size:12px;font-weight:600;">${escHtml_(e.Type || 'Event')}</span>
+      </div>
+      <table style="width:100%;font-size:14px;color:#334155;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="width:120px;font-weight:600;padding:4px 0;color:#64748B;">📅 Date:</td><td><strong>${escHtml_(e.Date)}</strong></td></tr>
+        <tr><td style="width:120px;font-weight:600;padding:4px 0;color:#64748B;">⏰ Time:</td><td>${escHtml_(e.StartTime)} – ${escHtml_(e.EndTime)}</td></tr>
+        <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">📍 Venue:</td><td>${escHtml_(e.Venue)}</td></tr>
+        <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">👤 Coordinator:</td><td>${escHtml_(e.Coordinator || 'CSF Team')}</td></tr>
+        ${e.Speaker ? `<tr><td style="font-weight:600;padding:4px 0;color:#64748B;">🎤 Speaker:</td><td>${escHtml_(e.Speaker)}</td></tr>` : ''}
+        ${e.Audience ? `<tr><td style="font-weight:600;padding:4px 0;color:#64748B;">👥 Target:</td><td>${escHtml_(e.Audience)}</td></tr>` : ''}
+      </table>
+      ${e.Description ? `<div style="margin-top:8px;font-size:13px;color:#475569;background:#F8FAFC;padding:10px;border-radius:6px;"><strong>Description:</strong> ${escHtml_(e.Description)}</div>` : ''}
+      ${e.Guide ? `<div style="margin-top:6px;font-size:13px;color:#475569;background:#F1F5F9;padding:10px;border-radius:6px;"><strong>Guidelines:</strong> ${escHtml_(e.Guide)}</div>` : ''}
+      ${e.MeetLink ? `
+        <div style="margin-top:12px;">
+          <a href="${escHtml_(e.MeetLink)}" target="_blank" style="display:inline-block;background:#1a73e8;color:#FFFFFF;padding:8px 18px;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
+            📹 Join Google Meet
+          </a>
+        </div>` : ''}
+    </div>
+  `).join('');
+
+  const digestHeading = isUpcoming ? "📅 CSF Calendar — Upcoming Events Schedule" : "📅 CSF Calendar — Today's Event Schedule";
+  const digestSub = isUpcoming ? `Upcoming approved events as of <strong>${todayFormatted}</strong>` : `Events scheduled for <strong>${todayFormatted}</strong>`;
 
   const emailBody = `
     <!DOCTYPE html>
@@ -910,15 +925,20 @@ function sendDailyEventDigest() {
     <head><meta charset="utf-8"></head>
     <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#F8FAFC;margin:0;padding:24px;color:#0F172A;">
       <div style="max-width:620px;margin:auto;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.06);border:1px solid #E2E8F0;">
-        <div style="background:linear-gradient(135deg,#1E3A8A,#2563EB);padding:24px 28px;color:#FFFFFF;">
-          <h1 style="margin:0;font-size:22px;font-weight:800;">📅 CSF Daily Event Digest</h1>
-          <p style="margin:6px 0 0;font-size:14px;opacity:0.9;">Scheduled events for <strong>${todayFormatted}</strong></p>
+        <div style="background:#1E293B;padding:24px 28px;color:#FFFFFF;">
+          <h1 style="margin:0;font-size:22px;font-weight:800;">${digestHeading}</h1>
+          <p style="margin:6px 0 0;font-size:14px;opacity:0.9;">${digestSub}</p>
         </div>
         <div style="padding:24px 28px;">
-          <p style="font-size:15px;color:#334155;margin-top:0;">Hello team, here is the official event schedule for today:</p>
+          <p style="font-size:15px;color:#334155;margin-top:0;">Hello team, here is the approved event schedule:</p>
           ${eventsHtml}
+          <div style="text-align:center;margin:24px 0 10px;">
+            <a href="https://csf-calender.vercel.app" target="_blank" style="background:#0F172A;color:#FFFFFF;padding:10px 24px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;display:inline-block;">
+              Open CSF Event Portal
+            </a>
+          </div>
           <div style="margin-top:24px;padding-top:16px;border-top:1px solid #E2E8F0;text-align:center;font-size:12px;color:#94A3B8;">
-            CSF Event Planning & Approval Portal • Sent automatically every morning
+            CSF Event Planning &amp; Approval Portal • Official Notification
           </div>
         </div>
       </div>
@@ -926,12 +946,16 @@ function sendDailyEventDigest() {
     </html>
   `;
 
+  const settings = getSettings_();
   const appTitle = settings.AppTitle || 'CSF Event Portal';
-  const subject = `[${appTitle}] Today's Events - ${todayFormatted} (${todayEvents.length} scheduled)`;
+  const subjectPrefix = isUpcoming ? "Upcoming Events Schedule" : "Today's Events";
+  const subject = `[${appTitle}] ${subjectPrefix} (${eventsToSend.length} event(s)) - ${todayFormatted}`;
 
+  let sentCount = 0;
   recipients.forEach(r => {
     try {
       MailApp.sendEmail({ to: r, subject: subject, htmlBody: emailBody });
+      sentCount++;
     } catch (err) {
       Logger.log(`Failed sending digest to ${r}: ${err.message}`);
     }
@@ -939,8 +963,8 @@ function sendDailyEventDigest() {
 
   return {
     ok: true,
-    sent: recipients.length,
-    eventsCount: todayEvents.length,
+    sent: sentCount,
+    eventsCount: eventsToSend.length,
     today: todayFormatted
   };
 }

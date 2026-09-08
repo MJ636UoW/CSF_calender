@@ -1687,12 +1687,22 @@
     };
 
     $('#btnSendDailyDigest').onclick = async () => {
-      if (!confirm("Send today's daily event digest email to all registered members right now?")) return;
+      if (!confirm("Send event schedule digest email to all registered members and admins right now?")) return;
+      const btn = $('#btnSendDailyDigest');
+      btn.disabled = true;
+      btn.textContent = 'Sending digest...';
       try {
         const res = await callApi('triggerDailyNotificationNow');
-        alert(`Digest Sent: ${res.sent} team members notified for ${res.eventsCount} events.`);
+        if (res.sent > 0) {
+          alert(`Digest Sent! ${res.sent} team members notified for ${res.eventsCount} approved event(s).`);
+        } else {
+          alert(res.reason || "No approved events found to broadcast.");
+        }
       } catch (e) {
         alert('Failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📧 Broadcast Today\'s Digest';
       }
     };
 
