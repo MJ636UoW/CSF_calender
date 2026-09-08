@@ -1072,7 +1072,13 @@
   const DEFAULT_BACKEND_URL = "https://script.google.com/macros/s/AKfycbybpxTUlzzY09pkothpZ_lyvChXk0vkrnJhOxzRiiF1Ij6DSrn89YFmKSpYHpNAskSdwA/exec";
 
   function getActiveBackendUrl() {
-    return localStorage.getItem('csf_script_url')
+    const stored = localStorage.getItem('csf_script_url');
+    // Auto-purge the old 404 URL if previously stored
+    if (stored && stored.includes('AKfycbypxTUlzz')) {
+      localStorage.removeItem('csf_script_url');
+      return DEFAULT_BACKEND_URL;
+    }
+    return stored
       || (window.CSF_CONFIG && window.CSF_CONFIG.APPS_SCRIPT_URL)
       || DEFAULT_BACKEND_URL;
   }
