@@ -1,1 +1,1668 @@
-// Sync with index.html
+<!doctype html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSF Event Calendar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js"></script>
+  <style>
+    :root {
+      --google-blue: #1a73e8;
+      --google-blue-hover: #1557b0;
+      --google-blue-light: #e8f0fe;
+      --surface: #ffffff;
+      --background: #ffffff;
+      --border: #dadce0;
+      --text-main: #3c4043;
+      --text-dark: #202124;
+      --text-muted: #70757a;
+      
+      --approved-bg: #e6f4ea;
+      --approved-text: #137333;
+      --approved-border: #ceead6;
+
+      --pending-bg: #fef7e0;
+      --pending-text: #b06000;
+      --pending-border: #feefc3;
+
+      --rejected-bg: #fce8e6;
+      --rejected-text: #c5221f;
+      --rejected-border: #fad2cf;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      background: var(--background);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Google Calendar Header */
+    header {
+      height: 64px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: #fff;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .cal-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-dark);
+    }
+    .cal-icon-box {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: #4285f4;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    .cal-icon-month { font-size: 8px; text-transform: uppercase; line-height: 1; margin-bottom: 1px; }
+    .cal-icon-date { font-size: 16px; line-height: 1; }
+    .app-title {
+      font-size: 20px;
+      font-weight: 500;
+      color: #5f6368;
+      letter-spacing: -0.02em;
+    }
+    .app-title strong { color: var(--text-dark); font-weight: 700; }
+
+    /* Navigation Controls */
+    .nav-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 20px;
+    }
+    .btn-today {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 16px;
+      height: 36px;
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-dark);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-today:hover { background: #f1f3f4; }
+    .icon-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: #5f6368;
+      transition: background 0.15s;
+    }
+    .icon-btn:hover { background: #f1f3f4; }
+    .month-header-label {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--text-dark);
+      margin-left: 12px;
+      min-width: 170px;
+    }
+
+    /* Header Search & User */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .search-container { position: relative; }
+    .search-input {
+      background: #f1f3f4;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 0 16px 0 40px;
+      height: 42px;
+      width: 240px;
+      font-size: 14px;
+      color: var(--text-dark);
+      transition: all 0.2s;
+    }
+    .search-input:focus {
+      background: #fff;
+      border-color: var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      outline: none;
+      width: 280px;
+    }
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 14px;
+      color: #5f6368;
+      pointer-events: none;
+    }
+
+    /* User Profile Badge */
+    .user-profile-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 12px 4px 6px;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: #fff;
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--google-blue);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      object-fit: cover;
+    }
+    .user-meta { line-height: 1.2; }
+    .user-display-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dark);
+      display: block;
+    }
+    .role-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .role-pill.admin { background: #fef08a; color: #854d0e; }
+    .role-pill.member { background: #e0f2fe; color: #075985; }
+
+    /* Main Layout */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 64px);
+      overflow: hidden;
+    }
+
+    /* Left Sidebar */
+    aside {
+      width: 240px;
+      padding: 16px 12px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .btn-create-event {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 20px;
+      height: 48px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      box-shadow: 0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dark);
+      transition: all 0.15s;
+    }
+    .btn-create-event:hover {
+      box-shadow: 0 2px 6px 2px rgba(60,64,67,0.3);
+      background: #fafafa;
+    }
+    .create-plus-icon { font-size: 24px; font-weight: 400; color: #ea4335; }
+    .sidebar-section h4 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+    .filter-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-dark);
+      transition: background 0.15s;
+    }
+    .filter-item:hover { background: #f1f3f4; }
+    .filter-item.active { background: var(--google-blue-light); color: var(--google-blue); font-weight: 600; }
+    .color-dot { width: 12px; height: 12px; border-radius: 3px; }
+    .dot-approved { background: #137333; }
+    .dot-pending { background: #b06000; }
+    .dot-all { background: var(--google-blue); }
+    .dot-my { background: #7c3aed; }
+
+    .admin-menu-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dark);
+      cursor: pointer;
+      margin-bottom: 6px;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .admin-menu-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+    /* Calendar Grid */
+    .calendar-workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #fff;
+    }
+    .cal-days-header {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+      flex-shrink: 0;
+    }
+    .cal-day-name {
+      padding: 10px 0;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-right: 1px solid var(--border);
+    }
+    .cal-day-name:last-child { border-right: none; }
+
+    .cal-month-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      grid-auto-rows: 1fr;
+      flex: 1;
+      overflow-y: auto;
+    }
+    .cal-cell {
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      cursor: pointer;
+      transition: background 0.1s;
+      min-height: 105px;
+    }
+    .cal-cell:nth-child(7n) { border-right: none; }
+    .cal-cell:hover { background: #f8f9fa; }
+    .cal-cell.out-of-month {
+      background: #fdfdfd;
+      color: #9aa0a6;
+      cursor: default;
+    }
+    .cell-top {
+      display: flex;
+      justify-content: center;
+      padding: 4px 0 2px;
+      margin-bottom: 2px;
+    }
+    .cell-date-num {
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dark);
+    }
+    .cal-cell.is-today .cell-date-num {
+      background: var(--google-blue);
+      color: #fff;
+      font-weight: 700;
+    }
+    .cal-cell.out-of-month .cell-date-num { color: #bdc1c6; }
+
+    .event-container {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .gcal-chip {
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.25;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      transition: transform 0.1s, box-shadow 0.1s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .gcal-chip:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+    }
+    .gcal-chip.approved { background: var(--approved-bg); color: var(--approved-text); border-left-color: #137333; }
+    .gcal-chip.pending { background: var(--pending-bg); color: var(--pending-text); border-left-color: #b06000; }
+    .gcal-chip.rejected { background: var(--rejected-bg); color: var(--rejected-text); border-left-color: #c5221f; }
+    .chip-time { font-weight: 700; font-size: 10px; opacity: 0.85; flex-shrink: 0; }
+    .chip-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .cell-hover-add {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      opacity: 0;
+      color: var(--google-blue);
+      font-size: 14px;
+      font-weight: 700;
+      transition: opacity 0.15s;
+    }
+    .cal-cell:hover:not(.out-of-month) .cell-hover-add { opacity: 1; }
+
+    /* Modals */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(32, 33, 36, 0.6);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 100;
+    }
+    .modal-overlay.open { display: flex; }
+    .gcal-dialog {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12);
+      width: min(640px, 100%);
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: dialogPop 0.18s ease-out;
+    }
+    @keyframes dialogPop {
+      from { transform: scale(0.96); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .dialog-header {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .dialog-header h3 { margin: 0; font-size: 18px; font-weight: 700; color: var(--text-dark); }
+    .btn-close {
+      background: transparent;
+      border: 0;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      color: #5f6368;
+    }
+    .btn-close:hover { background: #f1f3f4; }
+    .dialog-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .dialog-footer {
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: #f8f9fa;
+    }
+
+    .form-row { margin-bottom: 14px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: #5f6368; margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text-dark);
+      background: #fff;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--google-blue);
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+    }
+    textarea { min-height: 70px; resize: vertical; }
+
+    .meet-toggle-box {
+      background: #f0f7ff;
+      border: 1px solid #c2e7ff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .meet-toggle-box input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
+    .meet-toggle-box label { margin: 0; cursor: pointer; color: #004a77; font-weight: 600; font-size: 13px; }
+
+    .btn {
+      padding: 8px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 4px;
+      border: 0;
+      cursor: pointer;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+    .btn-blue { background: var(--google-blue); color: #fff; }
+    .btn-blue:hover { background: var(--google-blue-hover); }
+    .btn-ghost { background: transparent; color: var(--text-main); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: #f1f3f4; }
+    .btn-green { background: #137333; color: #fff; }
+    .btn-green:hover { background: #0d5a26; }
+    .btn-red { background: #c5221f; color: #fff; }
+    .btn-red:hover { background: #9c1c19; }
+
+    .details-list { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; font-size: 14px; margin-bottom: 16px; }
+    .dl-label { font-weight: 600; color: var(--text-muted); }
+    .dl-val { color: var(--text-dark); word-break: break-word; }
+
+    .meet-join-card {
+      background: #e8f0fe;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .meet-join-card a {
+      background: var(--google-blue);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .meet-join-card a:hover { background: var(--google-blue-hover); }
+
+    .admin-review-box {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 14px;
+      margin-top: 14px;
+    }
+    .comments-thread { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+    .comment-bubble { background: #f1f3f4; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 8px; }
+
+    .user-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .user-table th { text-align: left; padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+    .user-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+
+    .hidden { display: none !important; }
+
+    /* ========================================================== */
+    /* GOOGLE AUTH CARD (Modern & Clean) */
+    /* ========================================================== */
+    .google-auth-card {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 28px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 40px 36px;
+      max-width: 440px;
+      width: 100%;
+      text-align: left;
+    }
+    .google-logo-svg {
+      width: 44px;
+      height: 44px;
+      margin-bottom: 16px;
+    }
+    .google-auth-title {
+      font-size: 24px;
+      font-weight: 500;
+      color: #202124;
+      margin: 0 0 6px;
+    }
+    .google-auth-sub {
+      font-size: 15px;
+      color: #5f6368;
+      margin: 0 0 28px;
+    }
+    .google-input-box {
+      margin-bottom: 14px;
+    }
+    .google-input {
+      width: 100%;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 16px;
+      color: #202124;
+      transition: border 0.15s, box-shadow 0.15s;
+    }
+    .google-input:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26,115,232,0.2);
+      outline: none;
+    }
+    .quick-chips {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .quick-chip {
+      background: #f1f3f4;
+      border: 0;
+      border-radius: 16px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: #3c4043;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .quick-chip:hover { background: #e8eaed; }
+    
+    .btn-google-next {
+      background: #1a73e8;
+      color: #fff;
+      border: 0;
+      border-radius: 20px;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      float: right;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-google-next:hover { background: #1557b0; }
+    
+    @media(max-width: 768px) {
+      aside { display: none; }
+      .search-input { width: 140px; }
+      .month-header-label { min-width: auto; font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- GOOGLE CALENDAR HEADER -->
+<header>
+  <div class="header-left">
+    <div class="cal-logo">
+      <div class="cal-icon-box">
+        <span class="cal-icon-month" id="headerIconMonth">SEP</span>
+        <span class="cal-icon-date" id="headerIconDate">8</span>
+      </div>
+      <div class="app-title"><strong>CSF</strong> Calendar</div>
+    </div>
+
+    <div class="nav-controls">
+      <button class="btn-today" id="btnToday">Today</button>
+      <button class="icon-btn" id="btnPrev" title="Previous month">‹</button>
+      <button class="icon-btn" id="btnNext" title="Next month">›</button>
+      <span class="month-header-label" id="monthHeaderLabel">September 2026</span>
+    </div>
+  </div>
+
+  <div class="header-right">
+    <div class="search-container">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="search-input" id="calSearchInput" placeholder="Search events...">
+    </div>
+
+    <!-- Backend Config Settings Button -->
+    <button class="icon-btn" id="btnOpenConfig" title="Connection Settings">⚙️</button>
+
+    <!-- User Profile Badge -->
+    <div class="user-profile-badge" id="userProfileWrap">
+      <div class="user-avatar" id="userAvatar">U</div>
+      <div class="user-meta">
+        <span class="user-display-name" id="userName">Connecting...</span>
+        <span class="role-pill member" id="userRolePill">MEMBER</span>
+      </div>
+      <button class="btn-ghost" id="btnLogout" style="padding:2px 8px;font-size:11px;border-radius:12px;margin-left:4px;cursor:pointer;">Switch</button>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN WORKSPACE -->
+<div class="main-layout">
+  <!-- LEFT SIDEBAR -->
+  <aside>
+    <button class="btn-create-event" id="btnCreateEvent">
+      <span class="create-plus-icon">+</span>
+      <span>Create Event</span>
+    </button>
+
+    <!-- Admin Tools Section -->
+    <div class="sidebar-section hidden" id="adminSidebarSection">
+      <h4>Admin Controls</h4>
+      <button class="admin-menu-btn" id="btnOpenUserManagement">
+        👥 Manage Users & Roles
+      </button>
+      <button class="admin-menu-btn" id="btnSendDailyDigest">
+        📧 Broadcast Today's Digest
+      </button>
+    </div>
+
+    <!-- Calendar Filters -->
+    <div class="sidebar-section">
+      <h4>Event Filters</h4>
+      <div class="filter-item active" data-filter="all">
+        <span class="color-dot dot-all"></span>
+        <span>All Events</span>
+      </div>
+      <div class="filter-item" data-filter="approved">
+        <span class="color-dot dot-approved"></span>
+        <span>Approved (Live)</span>
+      </div>
+      <div class="filter-item" data-filter="pending">
+        <span class="color-dot dot-pending"></span>
+        <span>Pending Review</span>
+      </div>
+      <div class="filter-item" data-filter="my">
+        <span class="color-dot dot-my"></span>
+        <span>My Submissions</span>
+      </div>
+    </div>
+
+    <!-- Live Event Stats -->
+    <div class="sidebar-section">
+      <h4>Overview</h4>
+      <div style="font-size:12px;color:var(--text-muted);display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;justify-content:space-between;">
+          <span>Approved:</span>
+          <strong id="statApproved" style="color:#137333;">0</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span>Pending:</span>
+          <strong id="statPending" style="color:#b06000;">0</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span>Today's Events:</span>
+          <strong id="statToday" style="color:var(--google-blue);">0</strong>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CALENDAR GRID -->
+  <main class="calendar-workspace">
+    <div class="cal-days-header">
+      <div class="cal-day-name">SUN</div>
+      <div class="cal-day-name">MON</div>
+      <div class="cal-day-name">TUE</div>
+      <div class="cal-day-name">WED</div>
+      <div class="cal-day-name">THU</div>
+      <div class="cal-day-name">FRI</div>
+      <div class="cal-day-name">SAT</div>
+    </div>
+    <div class="cal-month-grid" id="monthGrid"></div>
+  </main>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: GOOGLE ACCOUNT SIGN-IN -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="authModal">
+  <div class="google-auth-card">
+    <svg class="google-logo-svg" viewBox="0 0 48 48">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+    </svg>
+
+    <h2 class="google-auth-title">Sign in with Google</h2>
+    <p class="google-auth-sub">Enter your Google Account to access CSF Calendar</p>
+
+    <div id="googleOfficialBtn" style="margin-bottom:16px;"></div>
+
+    <form id="googleSignInForm">
+      <div class="google-input-box">
+        <input type="text" id="googleEmailInput" class="google-input" required placeholder="Google Email (e.g. name@gmail.com)" autocomplete="email">
+      </div>
+
+      <div class="quick-chips">
+        <button type="button" class="quick-chip" id="chipGmail">+ @gmail.com</button>
+        <button type="button" class="quick-chip" id="chipAdmin">mandarj2412@gmail.com (Admin)</button>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;">
+        <span style="font-size:12px;color:#1a73e8;cursor:pointer;" id="linkSettings">Connection Settings ⚙️</span>
+        <button type="submit" class="btn-google-next" id="btnGoogleSubmit">
+          <span>Continue</span> →
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: BACKEND CONNECTION SETTINGS -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="configModal">
+  <div class="gcal-dialog" style="width:min(540px, 100%);">
+    <div class="dialog-header">
+      <h3>⚙️ Backend & Google Connection</h3>
+      <button class="btn-close" data-close="configModal">✕</button>
+    </div>
+    <div class="dialog-body">
+      <div class="form-row">
+        <label>Google Apps Script Web App URL (ends in /exec):</label>
+        <input type="url" id="cfgScriptUrl" placeholder="https://script.google.com/macros/s/.../exec">
+        <small style="color:var(--text-muted);font-size:11px;">Already pre-configured! Leave default unless you deployed a new version.</small>
+      </div>
+      <div class="form-row">
+        <label>Google OAuth 2.0 Client ID (Optional):</label>
+        <input type="text" id="cfgClientId" placeholder="Optional Client ID from Google Cloud">
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <button class="btn btn-ghost" data-close="configModal">Cancel</button>
+      <button class="btn btn-blue" id="btnSaveConfig">Save & Reconnect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: CREATE / PROPOSE EVENT -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="createEventModal">
+  <div class="gcal-dialog">
+    <div class="dialog-header">
+      <h3>📅 Create / Propose Event</h3>
+      <button class="btn-close" data-close="createEventModal">✕</button>
+    </div>
+    <form id="createEventForm">
+      <div class="dialog-body">
+        <div class="form-row">
+          <label>Event Title *</label>
+          <input type="text" id="eventTitle" required placeholder="Add title (e.g. Cybersecurity Hands-on Lab)">
+        </div>
+
+        <div class="form-grid-2 form-row">
+          <div>
+            <label>Event Type *</label>
+            <select id="eventType" required>
+              <option>Cybersecurity Workshop</option>
+              <option>Faculty Development (FDP)</option>
+              <option>Seminar / Webinar</option>
+              <option>Guest Lecture</option>
+              <option>Technical Training</option>
+              <option>Hackathon / Competition</option>
+              <option>CTF Challenge</option>
+              <option>Faculty Meeting</option>
+              <option>Student Activity</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label>Date *</label>
+            <input type="date" id="eventDate" required>
+          </div>
+        </div>
+
+        <div class="form-grid-2 form-row">
+          <div>
+            <label>Start Time *</label>
+            <input type="time" id="eventStart" required value="10:00">
+          </div>
+          <div>
+            <label>End Time *</label>
+            <input type="time" id="eventEnd" required value="12:00">
+          </div>
+        </div>
+
+        <div class="form-grid-2 form-row">
+          <div>
+            <label>Venue / Room *</label>
+            <input type="text" id="eventVenue" required placeholder="e.g. Auditorium / Lab 3 / Virtual">
+          </div>
+          <div>
+            <label>Coordinator</label>
+            <input type="text" id="eventCoord" placeholder="Coordinator name">
+          </div>
+        </div>
+
+        <div class="form-grid-2 form-row">
+          <div>
+            <label>Speaker / Resource Person</label>
+            <input type="text" id="eventSpeaker" placeholder="Guest speaker name">
+          </div>
+          <div>
+            <label>Target Audience</label>
+            <input type="text" id="eventAudience" placeholder="e.g. All CSF Faculty, 3rd Year">
+          </div>
+        </div>
+
+        <!-- Google Meet Video Toggle -->
+        <div class="form-row">
+          <div class="meet-toggle-box">
+            <input type="checkbox" id="eventArrangeMeet" checked>
+            <label for="eventArrangeMeet">
+              📹 <strong>Arrange Google Meet Video Call</strong> — Automatically creates a Google Meet link when approved.
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Description</label>
+          <textarea id="eventDesc" placeholder="Event description, objectives, and agenda..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <label>Guidelines / Instructions / Prerequisites</label>
+          <textarea id="eventGuide" placeholder="Software prerequisites, student instructions, preparation details..."></textarea>
+        </div>
+      </div>
+
+      <div class="dialog-footer">
+        <button type="button" class="btn btn-ghost" data-close="createEventModal">Cancel</button>
+        <button type="submit" class="btn btn-blue" id="btnSaveEvent">Submit for Approval</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: EVENT DETAILS & APPROVAL -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="eventDetailsModal">
+  <div class="gcal-dialog">
+    <div class="dialog-header">
+      <div>
+        <h3 id="detTitle" style="font-size:18px;">Event Title</h3>
+        <div style="margin-top:4px;display:flex;align-items:center;gap:8px;">
+          <span id="detStatus" class="role-pill">Approved</span>
+          <span id="detType" style="font-size:12px;color:var(--text-muted);"></span>
+        </div>
+      </div>
+      <button class="btn-close" data-close="eventDetailsModal">✕</button>
+    </div>
+
+    <div class="dialog-body">
+      <div id="detMeetBox" class="meet-join-card" style="display:none;">
+        <div>
+          <strong style="color:#004a77;font-size:14px;display:block;">📹 Google Meet Video Meeting</strong>
+          <span style="font-size:12px;color:#004a77;opacity:0.85;">Official conference link active</span>
+        </div>
+        <a id="detMeetLink" href="#" target="_blank">Join with Google Meet</a>
+      </div>
+
+      <div class="details-list" id="detList"></div>
+
+      <div id="adminDecisionBox" class="admin-review-box hidden">
+        <h4 style="margin:0 0 8px;font-size:13px;color:var(--text-dark);">🛡️ Admin Decision Panel</h4>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+          Approve this event to publish it to everyone's calendar schedule, or reject with feedback.
+        </p>
+        <div class="form-row">
+          <label>Admin Decision Comment (Mandatory if Rejecting):</label>
+          <textarea id="adminDecisionNote" placeholder="Enter reason or instructions for the organizer..."></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn btn-red" id="btnRejectEvent">Reject Event</button>
+          <button class="btn btn-green" id="btnApproveEvent">Approve & Make Live</button>
+        </div>
+      </div>
+
+      <div class="comments-thread">
+        <h4 style="margin:0 0 8px;font-size:13px;">💬 Staff Thoughts & Discussions</h4>
+        <div id="detCommentsList" style="max-height:140px;overflow-y:auto;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="inputNewComment" placeholder="Add your thought...">
+          <button class="btn btn-blue" id="btnPostComment">Post</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-footer">
+      <button class="btn btn-ghost" data-close="eventDetailsModal">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================================== -->
+<!-- MODAL: USER MANAGEMENT (ADMIN ONLY) -->
+<!-- ========================================================== -->
+<div class="modal-overlay" id="userMgmtModal">
+  <div class="gcal-dialog" style="width:min(700px, 100%);">
+    <div class="dialog-header">
+      <div>
+        <h3>👥 User Management (Admin Only)</h3>
+        <p style="margin:2px 0 0;font-size:12px;color:var(--text-muted);">
+          Everyone logs in via Google Account. Only Admins can assign <strong>Member</strong> or <strong>Admin</strong> roles.
+        </p>
+      </div>
+      <button class="btn-close" data-close="userMgmtModal">✕</button>
+    </div>
+
+    <div class="dialog-body">
+      <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;">
+        <label style="margin-bottom:8px;">Add / Pre-assign Role by Google Email:</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="text" id="addUserName" placeholder="Name" style="flex:1;min-width:130px;">
+          <input type="email" id="addUserEmail" placeholder="colleague@google.com" style="flex:1.5;min-width:170px;">
+          <select id="addUserRole" style="width:110px;">
+            <option value="member">Member</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button class="btn btn-blue" id="btnDoAddUser">+ Add</button>
+        </div>
+      </div>
+
+      <div style="max-height:300px;overflow-y:auto;">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Google Email</th>
+              <th>Current Role</th>
+              <th>Change Role</th>
+            </tr>
+          </thead>
+          <tbody id="userTableBody">
+            <tr><td colspan="4" style="text-align:center;">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="dialog-footer">
+      <button class="btn btn-ghost" data-close="userMgmtModal">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const State = {
+    user: null,
+    settings: {},
+    events: [],
+    todayStr: '',
+    viewYear: new Date().getFullYear(),
+    viewMonth: new Date().getMonth(),
+    filter: 'all',
+    searchQuery: '',
+    selectedId: null,
+    scriptUrl: '',
+    clientId: ''
+  };
+
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function loadConfig() {
+    const defaultCfg = window.CSF_CONFIG || {};
+    State.scriptUrl = localStorage.getItem('csf_script_url') || defaultCfg.APPS_SCRIPT_URL || '';
+    State.clientId = localStorage.getItem('csf_client_id') || defaultCfg.GOOGLE_CLIENT_ID || '';
+  }
+
+  async function callApi(action, data = {}) {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res && res.ok === false) reject(new Error(res.error || 'Server error'));
+            else resolve(res);
+          })
+          .withFailureHandler(err => reject(new Error(err.message || err)))
+          [action](data);
+      });
+    }
+
+    if (!State.scriptUrl) {
+      $('#configModal').classList.add('open');
+      throw new Error('Please configure your Google Apps Script Web App URL first.');
+    }
+
+    const payload = {
+      action: action,
+      ...data,
+      userEmail: State.user ? State.user.email : (data.email || ''),
+      userName: State.user ? State.user.name : (data.name || '')
+    };
+
+    const response = await fetch(State.scriptUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: Failed to reach Apps Script Web App.`);
+    }
+
+    const json = await response.json();
+    if (!json.ok) {
+      throw new Error(json.error || 'Unknown API error');
+    }
+    return json.data;
+  }
+
+  function toIso(y, m, d) {
+    return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    loadConfig();
+    bindEvents();
+    checkAuthAndInit();
+  });
+
+  function checkAuthAndInit() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      initApp();
+      return;
+    }
+
+    const cachedUser = localStorage.getItem('csf_google_user');
+    if (cachedUser) {
+      try {
+        State.user = JSON.parse(cachedUser);
+        initApp();
+        return;
+      } catch (e) {}
+    }
+
+    showGoogleSignIn();
+  }
+
+  function showGoogleSignIn() {
+    $('#authModal').classList.add('open');
+
+    if (State.clientId && window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.initialize({
+        client_id: State.clientId,
+        callback: handleGoogleCredentialResponse
+      });
+      google.accounts.id.renderButton(
+        $('#googleOfficialBtn'),
+        { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', width: 280 }
+      );
+    }
+  }
+
+  function handleGoogleCredentialResponse(response) {
+    try {
+      const base64Url = response.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+
+      const profile = JSON.parse(jsonPayload);
+      completeLogin(profile.email.toLowerCase(), profile.name, profile.picture);
+    } catch (err) {
+      alert('Google authentication error: ' + err.message);
+    }
+  }
+
+  function completeLogin(email, optName, optPicture) {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const name = optName || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    const role = cleanEmail.includes('mandarj2412') ? 'admin' : 'member';
+
+    State.user = {
+      name: name,
+      email: cleanEmail,
+      picture: optPicture || '',
+      role: role
+    };
+
+    localStorage.setItem('csf_google_user', JSON.stringify(State.user));
+    $('#authModal').classList.remove('open');
+    initApp();
+  }
+
+  async function initApp() {
+    try {
+      $('#userName').textContent = 'Connecting...';
+      const data = await callApi('getBootstrapData');
+      
+      State.user = data.currentUser || State.user;
+      State.settings = data.settings || {};
+      State.events = data.events || [];
+      State.todayStr = data.serverToday || toIso(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+      const [ty, tm] = State.todayStr.split('-').map(Number);
+      State.viewYear = ty;
+      State.viewMonth = tm - 1;
+
+      const dObj = new Date(ty, tm - 1, Number(State.todayStr.split('-')[2]));
+      $('#headerIconMonth').textContent = dObj.toLocaleString('en', { month: 'short' }).toUpperCase();
+      $('#headerIconDate').textContent = dObj.getDate();
+
+      renderUser();
+      renderStats();
+      renderCalendar();
+    } catch (err) {
+      $('#userName').textContent = 'Connection Offline';
+      console.error(err);
+    }
+  }
+
+  function renderUser() {
+    if (!State.user) return;
+    $('#userName').textContent = State.user.name;
+    
+    if (State.user.picture) {
+      $('#userAvatar').innerHTML = `<img src="${esc(State.user.picture)}" style="width:100%;height:100%;border-radius:50%;">`;
+    } else {
+      $('#userAvatar').textContent = (State.user.name || 'U').charAt(0).toUpperCase();
+    }
+    
+    const pill = $('#userRolePill');
+    const role = (State.user.role || 'member').toLowerCase();
+    pill.textContent = role.toUpperCase();
+    pill.className = 'role-pill ' + (role === 'admin' ? 'admin' : 'member');
+
+    if (role === 'admin') {
+      $('#adminSidebarSection').classList.remove('hidden');
+    } else {
+      $('#adminSidebarSection').classList.add('hidden');
+    }
+  }
+
+  function renderStats() {
+    const approved = State.events.filter(e => e.Status === 'Approved').length;
+    const pending = State.events.filter(e => e.Status === 'Pending').length;
+    const today = State.events.filter(e => e.Status === 'Approved' && e.Date === State.todayStr).length;
+
+    $('#statApproved').textContent = approved;
+    $('#statPending').textContent = pending;
+    $('#statToday').textContent = today;
+  }
+
+  function renderCalendar() {
+    const firstDayIndex = new Date(State.viewYear, State.viewMonth, 1).getDay();
+    const totalDays = new Date(State.viewYear, State.viewMonth + 1, 0).getDate();
+    const prevMonthTotalDays = new Date(State.viewYear, State.viewMonth, 0).getDate();
+
+    const monthObj = new Date(State.viewYear, State.viewMonth, 1);
+    $('#monthHeaderLabel').textContent = monthObj.toLocaleString('en', { month: 'long', year: 'numeric' });
+
+    const cells = [];
+
+    for (let i = firstDayIndex - 1; i >= 0; i--) {
+      const pDay = prevMonthTotalDays - i;
+      cells.push(`
+        <div class="cal-cell out-of-month">
+          <div class="cell-top"><span class="cell-date-num">${pDay}</span></div>
+        </div>
+      `);
+    }
+
+    for (let d = 1; d <= totalDays; d++) {
+      const dateStr = toIso(State.viewYear, State.viewMonth, d);
+      const isToday = (dateStr === State.todayStr);
+
+      const dayEvents = State.events.filter(e => {
+        if (e.Date !== dateStr) return false;
+        if (State.filter === 'approved' && e.Status !== 'Approved') return false;
+        if (State.filter === 'pending' && e.Status !== 'Pending') return false;
+        if (State.filter === 'my' && (e.SubmittedEmail || '').toLowerCase() !== (State.user.email || '').toLowerCase()) return false;
+        
+        if (State.searchQuery) {
+          const q = State.searchQuery.toLowerCase();
+          const match = (e.Title || '').toLowerCase().includes(q) ||
+                        (e.Venue || '').toLowerCase().includes(q) ||
+                        (e.Coordinator || '').toLowerCase().includes(q) ||
+                        (e.Type || '').toLowerCase().includes(q);
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      const eventsHtml = dayEvents.map(e => {
+        const st = String(e.Status || 'Pending').toLowerCase();
+        const hasMeet = !!e.MeetLink || String(e.ArrangeMeet).toUpperCase() === 'TRUE';
+        return `
+          <div class="gcal-chip ${st}" data-id="${e.EventID}" title="${esc(e.Title)} (${esc(e.StartTime)} - ${esc(e.EndTime)})">
+            <span class="chip-time">${esc(e.StartTime)}</span>
+            <span class="chip-title">${hasMeet ? '📹 ' : ''}${esc(e.Title)}</span>
+          </div>
+        `;
+      }).join('');
+
+      cells.push(`
+        <div class="cal-cell ${isToday ? 'is-today' : ''}" data-date="${dateStr}">
+          <div class="cell-top">
+            <span class="cell-date-num">${d}</span>
+            <span class="cell-hover-add">+</span>
+          </div>
+          <div class="event-container">${eventsHtml}</div>
+        </div>
+      `);
+    }
+
+    const totalSlots = cells.length;
+    const remaining = (7 - (totalSlots % 7)) % 7;
+    for (let n = 1; n <= remaining; n++) {
+      cells.push(`
+        <div class="cal-cell out-of-month">
+          <div class="cell-top"><span class="cell-date-num">${n}</span></div>
+        </div>
+      `);
+    }
+
+    $('#monthGrid').innerHTML = cells.join('');
+    bindGridClicks();
+  }
+
+  function bindGridClicks() {
+    $$('.cal-cell[data-date]').forEach(cell => {
+      cell.onclick = e => {
+        if (e.target.closest('[data-id]')) return;
+        openCreateDialog(cell.dataset.date);
+      };
+    });
+
+    $$('[data-id]').forEach(chip => {
+      chip.onclick = e => {
+        e.stopPropagation();
+        openEventDetails(chip.dataset.id);
+      };
+    });
+  }
+
+  function openCreateDialog(dateStr) {
+    $('#createEventForm').reset();
+    $('#eventDate').value = dateStr || State.todayStr;
+    $('#eventCoord').value = State.user ? State.user.name : '';
+    $('#eventArrangeMeet').checked = true;
+    $('#createEventModal').classList.add('open');
+  }
+
+  async function openEventDetails(eventId) {
+    State.selectedId = eventId;
+    $('#eventDetailsModal').classList.add('open');
+    $('#detTitle').textContent = 'Loading...';
+    $('#detList').innerHTML = '';
+    $('#detCommentsList').innerHTML = 'Loading comments...';
+    $('#detMeetBox').style.display = 'none';
+
+    try {
+      const data = await callApi('getEventDetails', { eventId });
+      const e = data.event;
+
+      $('#detTitle').textContent = e.Title;
+      $('#detType').textContent = e.Type || 'Event';
+      $('#detStatus').textContent = e.Status;
+      $('#detStatus').className = 'role-pill ' + String(e.Status).toLowerCase();
+
+      if (e.MeetLink) {
+        $('#detMeetBox').style.display = 'flex';
+        $('#detMeetLink').href = e.MeetLink;
+      }
+
+      const rows = [
+        ['Date', e.Date],
+        ['Time', `${e.StartTime} – ${e.EndTime}`],
+        ['Venue', e.Venue],
+        ['Coordinator', e.Coordinator || '—'],
+        ['Speaker', e.Speaker || '—'],
+        ['Audience', e.Audience || '—'],
+        ['Participants', e.ExpectedParticipants || '—'],
+        ['Proposed By', `${e.SubmittedBy} (${e.SubmittedEmail})`],
+        ['Description', e.Description || '—'],
+        ['Guidelines', e.Guide || '—'],
+        ['Admin Note', e.AdminComment || e.HODComment || '—']
+      ];
+
+      $('#detList').innerHTML = rows.map(r => `
+        <div class="dl-label">${esc(r[0])}:</div>
+        <div class="dl-val">${esc(r[1])}</div>
+      `).join('');
+
+      const isAdmin = (State.user && State.user.role === 'admin');
+      $('#adminDecisionBox').classList.toggle('hidden', !isAdmin);
+      if (isAdmin) {
+        $('#adminDecisionNote').value = e.AdminComment || e.HODComment || '';
+      }
+
+      renderComments(data.comments || []);
+    } catch (err) {
+      alert('Failed to load event: ' + err.message);
+      $('#eventDetailsModal').classList.remove('open');
+    }
+  }
+
+  function renderComments(comments) {
+    if (!comments.length) {
+      $('#detCommentsList').innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">No thoughts yet.</p>';
+      return;
+    }
+    $('#detCommentsList').innerHTML = comments.map(c => `
+      <div class="comment-bubble">
+        <strong>${esc(c.StaffName)}</strong>
+        <span style="font-size:10px;color:var(--text-muted);margin-left:6px;">${esc(c.CreatedAt)}</span>
+        <div style="margin-top:2px;">${esc(c.Comment)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function openUsersModal() {
+    $('#userMgmtModal').classList.add('open');
+    await refreshUserList();
+  }
+
+  async function refreshUserList() {
+    $('#userTableBody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading users...</td></tr>';
+    try {
+      const list = await callApi('getAllUsers');
+      if (!list.length) {
+        $('#userTableBody').innerHTML = '<tr><td colspan="4">No users registered yet.</td></tr>';
+        return;
+      }
+      $('#userTableBody').innerHTML = list.map(u => `
+        <tr>
+          <td><strong>${esc(u.name)}</strong></td>
+          <td>${esc(u.email)}</td>
+          <td><span class="role-pill ${u.role === 'admin' ? 'admin' : 'member'}">${esc(u.role.toUpperCase())}</span></td>
+          <td>
+            <select class="user-role-select" data-email="${esc(u.email)}" style="padding:4px 8px;font-size:12px;width:105px;">
+              <option value="member" ${u.role === 'member' ? 'selected' : ''}>Member</option>
+              <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+            </select>
+          </td>
+        </tr>
+      `).join('');
+
+      $$('.user-role-select').forEach(s => {
+        s.onchange = async () => {
+          const email = s.dataset.email;
+          const role = s.value;
+          try {
+            await callApi('updateUserRole', { targetEmail: email, newRole: role });
+            alert(`Updated ${email} to ${role.toUpperCase()}.`);
+            await refreshUserList();
+          } catch (e) {
+            alert('Error updating role: ' + e.message);
+            await refreshUserList();
+          }
+        };
+      });
+    } catch (err) {
+      $('#userTableBody').innerHTML = `<tr><td colspan="4" style="color:red;">${esc(err.message)}</td></tr>`;
+    }
+  }
+
+  function bindEvents() {
+    $('#btnPrev').onclick = () => {
+      if (--State.viewMonth < 0) { State.viewMonth = 11; State.viewYear--; }
+      renderCalendar();
+    };
+    $('#btnNext').onclick = () => {
+      if (++State.viewMonth > 11) { State.viewMonth = 0; State.viewYear++; }
+      renderCalendar();
+    };
+    $('#btnToday').onclick = () => {
+      const [ty, tm] = State.todayStr.split('-').map(Number);
+      State.viewYear = ty;
+      State.viewMonth = tm - 1;
+      renderCalendar();
+    };
+
+    $('#btnCreateEvent').onclick = () => openCreateDialog(State.todayStr);
+
+    $$('.filter-item').forEach(item => {
+      item.onclick = () => {
+        $$('.filter-item').forEach(f => f.classList.remove('active'));
+        item.classList.add('active');
+        State.filter = item.dataset.filter;
+        renderCalendar();
+      };
+    });
+
+    $('#calSearchInput').oninput = e => {
+      State.searchQuery = e.target.value.trim();
+      renderCalendar();
+    };
+
+    // Google Sign-In Form Submit
+    $('#googleSignInForm').onsubmit = e => {
+      e.preventDefault();
+      const email = $('#googleEmailInput').value.trim();
+      if (!email || !email.includes('@')) {
+        alert('Please enter a valid Google email address.');
+        return;
+      }
+      completeLogin(email);
+    };
+
+    // Quick chips
+    $('#chipGmail').onclick = () => {
+      const input = $('#googleEmailInput');
+      if (!input.value.includes('@')) input.value += '@gmail.com';
+    };
+
+    $('#chipAdmin').onclick = () => {
+      $('#googleEmailInput').value = 'mandarj2412@gmail.com';
+    };
+
+    $('#linkSettings').onclick = () => {
+      $('#cfgScriptUrl').value = State.scriptUrl;
+      $('#cfgClientId').value = State.clientId;
+      $('#configModal').classList.add('open');
+    };
+
+    $('#createEventForm').onsubmit = async e => {
+      e.preventDefault();
+      const payload = {
+        title: $('#eventTitle').value,
+        type: $('#eventType').value,
+        date: $('#eventDate').value,
+        startTime: $('#eventStart').value,
+        endTime: $('#eventEnd').value,
+        venue: $('#eventVenue').value,
+        coordinator: $('#eventCoord').value,
+        speaker: $('#eventSpeaker').value,
+        audience: $('#eventAudience').value,
+        arrangeMeet: $('#eventArrangeMeet').checked,
+        description: $('#eventDesc').value,
+        guide: $('#eventGuide').value
+      };
+
+      $('#btnSaveEvent').disabled = true;
+      $('#btnSaveEvent').textContent = 'Submitting...';
+
+      try {
+        const res = await callApi('submitEvent', { payload });
+        alert(res.message || 'Event proposed successfully!');
+        $('#createEventModal').classList.remove('open');
+        await reloadData();
+      } catch (err) {
+        alert('Submission failed: ' + err.message);
+      } finally {
+        $('#btnSaveEvent').disabled = false;
+        $('#btnSaveEvent').textContent = 'Submit for Approval';
+      }
+    };
+
+    $('#btnApproveEvent').onclick = () => submitDecision('Approved');
+    $('#btnRejectEvent').onclick = () => submitDecision('Rejected');
+
+    $('#btnPostComment').onclick = async () => {
+      const t = $('#inputNewComment').value.trim();
+      if (!t) return;
+      try {
+        const comments = await callApi('addComment', { eventId: State.selectedId, text: t });
+        $('#inputNewComment').value = '';
+        renderComments(comments);
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      }
+    };
+
+    $('#btnOpenUserManagement').onclick = openUsersModal;
+    $('#btnDoAddUser').onclick = async () => {
+      const n = $('#addUserName').value.trim();
+      const em = $('#addUserEmail').value.trim();
+      const r = $('#addUserRole').value;
+      if (!em) return alert('Email required');
+      try {
+        await callApi('addUser', { name: n, email: em, role: r });
+        alert(`User ${em} added as ${r.toUpperCase()}.`);
+        $('#addUserName').value = '';
+        $('#addUserEmail').value = '';
+        await refreshUserList();
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      }
+    };
+
+    $('#btnSendDailyDigest').onclick = async () => {
+      if (!confirm("Send today's daily event digest email to all registered members right now?")) return;
+      try {
+        const res = await callApi('triggerDailyNotificationNow');
+        alert(`Digest Sent: ${res.sent} team members notified for ${res.eventsCount} events.`);
+      } catch (e) {
+        alert('Failed: ' + e.message);
+      }
+    };
+
+    // Logout / Switch Account
+    $('#btnLogout').onclick = () => {
+      localStorage.removeItem('csf_google_user');
+      State.user = null;
+      showGoogleSignIn();
+    };
+
+    $('#btnOpenConfig').onclick = () => {
+      $('#cfgScriptUrl').value = State.scriptUrl;
+      $('#cfgClientId').value = State.clientId;
+      $('#configModal').classList.add('open');
+    };
+
+    $('#btnSaveConfig').onclick = () => {
+      const sUrl = $('#cfgScriptUrl').value.trim();
+      const cId = $('#cfgClientId').value.trim();
+      localStorage.setItem('csf_script_url', sUrl);
+      localStorage.setItem('csf_client_id', cId);
+      State.scriptUrl = sUrl;
+      State.clientId = cId;
+      $('#configModal').classList.remove('open');
+      alert('Connection settings saved! Reconnecting...');
+      checkAuthAndInit();
+    };
+
+    $$('[data-close]').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.close;
+        $(`#${id}`).classList.remove('open');
+      };
+    });
+  }
+
+  async function submitDecision(status) {
+    const note = $('#adminDecisionNote').value.trim();
+    if (status === 'Rejected' && !note) {
+      return alert('Rejection reason is mandatory so the organizer knows what to adjust.');
+    }
+    try {
+      await callApi('setEventStatus', { eventId: State.selectedId, status: status, adminComment: note });
+      alert(`Event status updated to "${status}".`);
+      $('#eventDetailsModal').classList.remove('open');
+      await reloadData();
+    } catch (e) {
+      alert('Action failed: ' + e.message);
+    }
+  }
+
+  async function reloadData() {
+    const data = await callApi('getBootstrapData');
+    State.events = data.events || [];
+    renderStats();
+    renderCalendar();
+  }
+</script>
+</body>
+</html>
