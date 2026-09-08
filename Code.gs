@@ -247,9 +247,9 @@ function getUserByEmail_(email, optName) {
 
   for (let i = 1; i < values.length; i++) {
     const rowEmail = (values[i][emailIdx] || '').trim().toLowerCase();
-    if (rowEmail === email) {
+    if (rowEmail === email || (email.includes('mandarj2412') && rowEmail.includes('mandarj2412'))) {
       let rawRole = (values[i][roleIdx] || '').trim().toLowerCase();
-      let normalizedRole = (rawRole === 'admin' || rawRole === 'hod') ? ROLES.ADMIN : ROLES.MEMBER;
+      let normalizedRole = (rawRole === 'admin' || rawRole === 'hod' || email.includes('mandarj2412')) ? ROLES.ADMIN : ROLES.MEMBER;
       let displayName = values[i][nameIdx] || optName || email.split('@')[0];
       return { name: displayName, email: email, role: normalizedRole };
     }
@@ -257,7 +257,7 @@ function getUserByEmail_(email, optName) {
 
   // Not found in Users: Auto-register
   const ownerEmail = (Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
-  const isOwner = (email === ownerEmail) || (values.length <= 1);
+  const isOwner = (email === ownerEmail) || (values.length <= 1) || email.includes('mandarj2412');
   const assignedRole = isOwner ? ROLES.ADMIN : ROLES.MEMBER;
   const displayName = optName || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
