@@ -705,7 +705,7 @@
         <span class="user-display-name" id="userName">Mandar</span>
         <span class="role-pill member" id="userRolePill">MEMBER</span>
       </div>
-      <button class="btn-ghost" id="btnLogout" style="padding:2px 8px;font-size:11px;border-radius:12px;margin-left:2px;cursor:pointer;">Switch</button>
+      <button class="btn-ghost" id="btnLogout" style="padding:2px 8px;font-size:11px;border-radius:12px;margin-left:2px;cursor:pointer;color:#dc2626;">🔒 Logout</button>
     </div>
 
     <button class="icon-btn" id="btnOpenSettings" title="Backend Connection Settings" style="font-size:17px;cursor:pointer;">⚙️</button>
@@ -799,24 +799,63 @@
 <button class="mobile-fab-create" id="btnMobileCreate" title="Create Event">+</button>
 
 <!-- ========================================================== -->
-<!-- MODAL: SIGN-IN -->
+<!-- MODAL: CONFIDENTIAL AUTHENTICATION (EMAIL OTP + HMAC) -->
 <!-- ========================================================== -->
 <div class="modal-overlay" id="authModal">
-  <div class="google-auth-card" style="text-align:center;">
-    <div style="width:52px;height:52px;background:#e8f0fe;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 14px;box-shadow:0 2px 6px rgba(26,115,232,0.15);">📅</div>
+  <div class="google-auth-card" style="text-align:center;max-width:440px;">
+    <div style="width:54px;height:54px;background:#f1f5f9;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 12px;border:1px solid #e2e8f0;">🔒</div>
 
-    <h2 class="google-auth-title" style="font-size:21px;font-weight:700;color:#202124;margin-bottom:6px;">CSF Event Calendar</h2>
-    <p class="google-auth-sub" style="font-size:13px;color:#5f6368;margin-bottom:22px;">Sign in with your email to access the event portal</p>
+    <span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:3px 10px;border-radius:12px;text-transform:uppercase;display:inline-block;margin-bottom:8px;">
+      Confidential Portal
+    </span>
+    <h2 class="google-auth-title" style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:4px;">MIT ADT Event Calendar</h2>
+    <p class="google-auth-sub" style="font-size:13px;color:#64748b;margin-bottom:18px;">Faculty &amp; Member Security Access</p>
 
-    <form id="googleSignInForm" style="text-align:left;">
-      <div class="form-row">
-        <label style="font-size:12px;font-weight:600;color:#475569;margin-bottom:6px;display:block;">Email Address</label>
-        <input type="email" id="googleEmailInput" class="google-input" required placeholder="Enter your email (e.g. name@domain.com)" autocomplete="email" style="font-size:14px;padding:11px 14px;">
+    <div id="authAlertBox" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;text-align:left;line-height:1.4;"></div>
+
+    <!-- STEP 1: Enter Institutional Email -->
+    <form id="stepEmailForm" style="text-align:left;">
+      <div class="form-row" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:#334155;margin-bottom:6px;display:block;">Institutional Email Address</label>
+        <input type="email" id="authEmailInput" class="google-input" required placeholder="name@mituniversity.edu.in" autocomplete="email" style="font-size:14px;padding:11px 14px;">
+        <div style="font-size:11px;color:#64748b;margin-top:6px;line-height:1.4;">
+          🔒 Access is restricted to <strong>@mituniversity.edu.in</strong> and authorized whitelisted members.
+        </div>
       </div>
 
-      <button type="submit" class="btn-google-next" id="btnGoogleSubmit" style="margin-top:14px;padding:11px 20px;font-size:14px;">
-        <span>Continue to Calendar →</span>
+      <button type="submit" class="btn-google-next" id="btnRequestOtp" style="margin-top:8px;padding:11px 20px;font-size:14px;background:#0f172a;">
+        <span>Send Single-Use Code →</span>
       </button>
+    </form>
+
+    <!-- STEP 2: Enter 6-Digit Verification Code -->
+    <form id="stepOtpForm" style="display:none;text-align:left;">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#334155;">
+        <span>Sent 6-digit code to:</span><br>
+        <strong id="authSentEmailDisplay" style="color:#0f172a;word-break:break-all;"></strong>
+      </div>
+
+      <div class="form-row" style="margin-bottom:12px;">
+        <label style="font-size:12px;font-weight:600;color:#334155;margin-bottom:6px;display:block;">Enter 6-Digit Security Code</label>
+        <input type="text" id="authOtpInput" maxlength="6" pattern="[0-9]{6}" required placeholder="• • • • • •" autocomplete="one-time-code" style="text-align:center;font-size:24px;letter-spacing:8px;font-family:monospace;font-weight:700;padding:10px;width:100%;border:2px solid #cbd5e1;border-radius:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#64748b;margin-top:6px;">
+          <span>Code expires in: <strong id="otpTimerText" style="color:#b45309;">10:00</strong></span>
+          <button type="button" id="btnResendOtpLink" style="background:none;border:none;color:#2563eb;cursor:pointer;font-size:12px;padding:0;text-decoration:underline;">Resend Code</button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <input type="checkbox" id="authRememberMe" checked style="width:16px;height:16px;cursor:pointer;">
+        <label for="authRememberMe" style="font-size:12px;color:#475569;cursor:pointer;margin:0;">Keep me signed in on this device (7 days)</label>
+      </div>
+
+      <button type="submit" class="btn-google-next" id="btnVerifyOtp" style="padding:11px 20px;font-size:14px;background:#16a34a;">
+        <span>Verify &amp; Enter Portal 🔐</span>
+      </button>
+
+      <div style="text-align:center;margin-top:14px;">
+        <button type="button" id="btnBackToEmail" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:12px;text-decoration:underline;">← Use a different email</button>
+      </div>
     </form>
   </div>
 </div>
@@ -1097,7 +1136,30 @@
       || DEFAULT_BACKEND_URL;
   }
 
+  function getSessionToken() {
+    return sessionStorage.getItem('mitadt_session_token') || localStorage.getItem('mitadt_session_token') || '';
+  }
+
+  function setSessionToken(token, rememberMe = true) {
+    sessionStorage.setItem('mitadt_session_token', token);
+    if (rememberMe) {
+      localStorage.setItem('mitadt_session_token', token);
+    } else {
+      localStorage.removeItem('mitadt_session_token');
+    }
+  }
+
+  function clearSession() {
+    sessionStorage.removeItem('mitadt_session_token');
+    localStorage.removeItem('mitadt_session_token');
+    localStorage.removeItem('csf_google_user');
+    State.token = null;
+    State.user = null;
+    State.events = [];
+  }
+
   const State = {
+    token: getSessionToken(),
     user: null,
     settings: {},
     events: [],
@@ -1115,18 +1177,6 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   async function callApi(action, data = {}) {
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      return new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(res => {
-            if (res && res.ok === false) reject(new Error(res.error || 'Server error'));
-            else resolve(res);
-          })
-          .withFailureHandler(err => reject(new Error(err.message || err)))
-          [action](data);
-      });
-    }
-
     const currentUrl = State.scriptUrl || getActiveBackendUrl();
     if (!currentUrl) {
       throw new Error('Backend URL not configured.');
@@ -1135,8 +1185,7 @@
     const payload = {
       action: action,
       ...data,
-      userEmail: State.user ? State.user.email : (data.email || ''),
-      userName: State.user ? State.user.name : (data.name || '')
+      sessionToken: State.token || getSessionToken()
     };
 
     const response = await fetch(currentUrl, {
@@ -1147,13 +1196,17 @@
 
     if (!response.ok) {
       if (response.status === 404) {
-        throw new Error('HTTP 404: Web App not found. In Apps Script, set "Who has access" to "Anyone" and verify deployment URL.');
+        throw new Error('HTTP 404: Web App not found. In Apps Script, set "Who has access" to "Anyone" & paste Web App URL.');
       }
       throw new Error(`HTTP ${response.status}: Failed to reach backend.`);
     }
 
     const json = await response.json();
     if (!json.ok) {
+      if (json.code === 401 || (json.error && json.error.toLowerCase().includes('unauthorized'))) {
+        clearSession();
+        showAuthModal(json.error || 'Session expired. Please log in with a new security code.');
+      }
       throw new Error(json.error || 'Unknown API error');
     }
     return json.data;
@@ -1168,42 +1221,76 @@
     checkAuthAndInit();
   });
 
-  function checkAuthAndInit() {
-    if (typeof google !== 'undefined' && google.script && google.script.run) {
-      initApp();
+  async function checkAuthAndInit() {
+    State.token = getSessionToken();
+    if (!State.token) {
+      showAuthModal();
       return;
     }
 
-    const cachedUser = localStorage.getItem('csf_google_user');
-    if (cachedUser) {
-      try {
-        State.user = JSON.parse(cachedUser);
-        initApp();
-        return;
-      } catch (e) {}
+    try {
+      await initApp();
+    } catch (err) {
+      console.warn('Authentication verification notice:', err.message);
+      clearSession();
+      showAuthModal('Your session has expired. Please verify your email.');
     }
-
-    showGoogleSignIn();
   }
 
-  function showGoogleSignIn() {
+  function showAuthModal(errMsg = '') {
     $('#authModal').classList.add('open');
+    $('#stepEmailForm').style.display = 'block';
+    $('#stepOtpForm').style.display = 'none';
+    if (errMsg) {
+      showAuthAlert(errMsg, 'error');
+    } else {
+      $('#authAlertBox').style.display = 'none';
+    }
   }
 
-  function completeLogin(email, optName) {
-    const cleanEmail = String(email || '').trim().toLowerCase();
-    const name = optName || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    const role = cleanEmail.includes('mandarj2412') ? 'admin' : 'member';
+  function showAuthAlert(msg, type = 'error') {
+    const box = $('#authAlertBox');
+    if (!box) return;
+    box.style.display = 'block';
+    if (type === 'error') {
+      box.style.background = '#fef2f2';
+      box.style.color = '#991b1b';
+      box.style.border = '1px solid #fecaca';
+      box.innerHTML = `⚠️ <strong>Security Notice:</strong> ${esc(msg)}`;
+    } else {
+      box.style.background = '#f0fdf4';
+      box.style.color = '#166534';
+      box.style.border = '1px solid #bbf7d0';
+      box.innerHTML = `✅ ${esc(msg)}`;
+    }
+  }
 
-    State.user = {
-      name: name,
-      email: cleanEmail,
-      role: role
+  let otpTimerInterval = null;
+  function startOtpCountdown(seconds = 600) {
+    if (otpTimerInterval) clearInterval(otpTimerInterval);
+    let remaining = seconds;
+    const timerElem = $('#otpTimerText');
+    const update = () => {
+      const m = Math.floor(remaining / 60);
+      const s = remaining % 60;
+      if (timerElem) timerElem.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      if (remaining <= 0) {
+        clearInterval(otpTimerInterval);
+        if (timerElem) timerElem.textContent = 'Expired';
+        showAuthAlert('Verification code has expired. Please request a new code.', 'error');
+      }
+      remaining--;
     };
+    update();
+    otpTimerInterval = setInterval(update, 1000);
+  }
 
-    localStorage.setItem('csf_google_user', JSON.stringify(State.user));
-    $('#authModal').classList.remove('open');
-    initApp();
+  function logoutUser() {
+    clearSession();
+    renderUser();
+    renderStats();
+    renderCalendar();
+    showAuthModal();
   }
 
   function setBackendStatus(isOnline, errMessage = '') {
@@ -1632,16 +1719,92 @@
       renderCalendar();
     };
 
-    // Sign in form
-    $('#googleSignInForm').onsubmit = e => {
+    // Step 1: Request OTP Form Submit
+    $('#stepEmailForm').onsubmit = async e => {
       e.preventDefault();
-      const email = $('#googleEmailInput').value.trim();
-      if (!email || !email.includes('@')) {
-        alert('Please enter a valid Google email.');
-        return;
+      const emailInput = $('#authEmailInput');
+      const email = emailInput.value.trim().toLowerCase();
+      const btn = $('#btnRequestOtp');
+      btn.disabled = true;
+      btn.innerHTML = '<span>Verifying &amp; Sending Code...</span>';
+      $('#authAlertBox').style.display = 'none';
+
+      try {
+        const res = await callApi('requestLoginOtp', { email: email });
+        $('#stepEmailForm').style.display = 'none';
+        $('#stepOtpForm').style.display = 'block';
+        $('#authSentEmailDisplay').textContent = email;
+        $('#authOtpInput').value = '';
+        $('#authOtpInput').focus();
+        startOtpCountdown(600);
+        showAuthAlert(res.message || `Single-use code sent to ${email}.`, 'success');
+      } catch (err) {
+        showAuthAlert(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Send Single-Use Code →</span>';
       }
-      completeLogin(email);
     };
+
+    // Step 2: Verify OTP Form Submit
+    $('#stepOtpForm').onsubmit = async e => {
+      e.preventDefault();
+      const email = $('#authSentEmailDisplay').textContent.trim();
+      const otp = $('#authOtpInput').value.trim();
+      const rememberMe = $('#authRememberMe').checked;
+      const btn = $('#btnVerifyOtp');
+
+      if (otp.length !== 6) {
+        return showAuthAlert('Please enter the full 6-digit security code.', 'error');
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>Verifying Authenticity...</span>';
+
+      try {
+        const res = await callApi('verifyLoginOtp', { email: email, otp: otp });
+        if (!res.sessionToken) throw new Error('Did not receive security token from server.');
+
+        setSessionToken(res.sessionToken, rememberMe);
+        State.token = res.sessionToken;
+        State.user = res.user;
+
+        if (otpTimerInterval) clearInterval(otpTimerInterval);
+        $('#authModal').classList.remove('open');
+        await initApp();
+      } catch (err) {
+        showAuthAlert(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span>Verify &amp; Enter Portal 🔐</span>';
+      }
+    };
+
+    // Resend OTP Link
+    if ($('#btnResendOtpLink')) {
+      $('#btnResendOtpLink').onclick = async () => {
+        const email = $('#authSentEmailDisplay').textContent.trim();
+        if (!email) return;
+        try {
+          const res = await callApi('requestLoginOtp', { email: email });
+          startOtpCountdown(600);
+          showAuthAlert(res.message || 'New verification code sent.', 'success');
+        } catch (err) {
+          showAuthAlert(err.message, 'error');
+        }
+      };
+    }
+
+    // Back to Email Step
+    if ($('#btnBackToEmail')) {
+      $('#btnBackToEmail').onclick = () => {
+        if (otpTimerInterval) clearInterval(otpTimerInterval);
+        $('#stepEmailForm').style.display = 'block';
+        $('#stepOtpForm').style.display = 'none';
+        $('#authAlertBox').style.display = 'none';
+        $('#authEmailInput').focus();
+      };
+    }
 
     // Create Event Form Submit
     $('#createEventForm').onsubmit = async e => {
@@ -1730,9 +1893,7 @@
     };
 
     $('#btnLogout').onclick = () => {
-      localStorage.removeItem('csf_google_user');
-      State.user = null;
-      showGoogleSignIn();
+      logoutUser();
     };
 
     // Backend Connection Settings Handlers
