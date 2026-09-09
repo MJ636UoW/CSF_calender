@@ -970,9 +970,12 @@
       </div>
     </div>
 
-    <div class="dialog-footer">
+    <div class="dialog-footer" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;">
       <button type="button" class="btn btn-blue" id="btnBroadcastApprovedEvent" style="display:none;align-items:center;gap:6px;">
-        <span>📧 Broadcast Mail to All Members</span>
+        <span>📧 Broadcast Announcement</span>
+      </button>
+      <button type="button" class="btn btn-outline" id="btnSend12hReminderModal" style="display:none;align-items:center;gap:6px;border-color:#d97706;color:#b45309;background:#fffbeb;">
+        <span>⏰ Send 12h Reminder Mail</span>
       </button>
       <button class="btn btn-ghost" data-close="eventDetailsModal">Close</button>
     </div>
@@ -1053,6 +1056,23 @@
       </div>
 
       <div id="backendTestResult" style="display:none;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;word-break:break-word;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:16px 0 12px;">
+      
+      <h4 style="margin:0 0 6px;font-size:13px;color:var(--text-dark);">⚡ Automation &amp; Notification Controls</h4>
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">Dispatch automated reminders or re-configure cloud cron triggers:</p>
+      
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button type="button" class="btn btn-outline" id="btnTrigger12hReminders" style="text-align:left;justify-content:flex-start;font-size:12px;padding:8px 12px;">
+          ⏰ <strong>Scan &amp; Send 12-Hour Reminders Now</strong>
+        </button>
+        <button type="button" class="btn btn-outline" id="btnTriggerDailyDigest" style="text-align:left;justify-content:flex-start;font-size:12px;padding:8px 12px;">
+          📧 <strong>Send Daily Digest Broadcast Now</strong>
+        </button>
+        <button type="button" class="btn btn-outline" id="btnSetupTriggers" style="text-align:left;justify-content:flex-start;font-size:12px;padding:8px 12px;">
+          🔄 <strong>Re-configure Cloud Triggers (Daily 8 AM + Hourly 12h)</strong>
+        </button>
+      </div>
     </div>
     <div class="dialog-footer">
       <button type="button" class="btn btn-ghost" id="btnTestBackendConnection">Test Connection</button>
@@ -1508,6 +1528,9 @@
       if ($('#btnBroadcastApprovedEvent')) {
         $('#btnBroadcastApprovedEvent').style.display = (isAdmin && isApproved) ? 'inline-flex' : 'none';
       }
+      if ($('#btnSend12hReminderModal')) {
+        $('#btnSend12hReminderModal').style.display = (isAdmin && isApproved) ? 'inline-flex' : 'none';
+      }
 
       renderComments(data.comments || []);
     } catch (err) {
@@ -1739,7 +1762,77 @@
           alert('Failed sending email: ' + e.message);
         } finally {
           btn.disabled = false;
-          btn.textContent = '📧 Broadcast Mail to All Members';
+          btn.textContent = '📧 Broadcast Announcement';
+        }
+      };
+    }
+
+    if ($('#btnSend12hReminderModal')) {
+      $('#btnSend12hReminderModal').onclick = async () => {
+        if (!State.selectedId) return;
+        if (!confirm("Send 12-hour reminder email to all team members & coordinators now?")) return;
+        const btn = $('#btnSend12hReminderModal');
+        btn.disabled = true;
+        btn.textContent = 'Sending reminder...';
+        try {
+          const res = await callApi('send12HourReminderNow', { eventId: State.selectedId });
+          alert(res.message || `12-hour reminder dispatched to ${res.sent} members!`);
+        } catch (e) {
+          alert('Failed sending reminder: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '⏰ Send 12h Reminder Mail';
+        }
+      };
+    }
+
+    if ($('#btnTrigger12hReminders')) {
+      $('#btnTrigger12hReminders').onclick = async () => {
+        const btn = $('#btnTrigger12hReminders');
+        btn.disabled = true;
+        btn.textContent = 'Scanning events...';
+        try {
+          const res = await callApi('check12HourReminders');
+          alert(res.message || `Scan complete. Sent ${res.sent} reminders.`);
+        } catch (e) {
+          alert('Scan failed: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '⏰ <strong>Scan &amp; Send 12-Hour Reminders Now</strong>';
+        }
+      };
+    }
+
+    if ($('#btnTriggerDailyDigest')) {
+      $('#btnTriggerDailyDigest').onclick = async () => {
+        const btn = $('#btnTriggerDailyDigest');
+        btn.disabled = true;
+        btn.textContent = 'Sending daily digest...';
+        try {
+          const res = await callApi('triggerDailyNotificationNow');
+          alert(res.message || `Daily digest broadcast sent to ${res.sent || 0} members!`);
+        } catch (e) {
+          alert('Failed: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '📧 <strong>Send Daily Digest Broadcast Now</strong>';
+        }
+      };
+    }
+
+    if ($('#btnSetupTriggers')) {
+      $('#btnSetupTriggers').onclick = async () => {
+        const btn = $('#btnSetupTriggers');
+        btn.disabled = true;
+        btn.textContent = 'Configuring triggers...';
+        try {
+          const res = await callApi('setupAllTriggers');
+          alert(res.message || 'Triggers successfully configured!');
+        } catch (e) {
+          alert('Failed: ' + e.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '🔄 <strong>Re-configure Cloud Triggers (Daily 8 AM + Hourly 12h)</strong>';
         }
       };
     }

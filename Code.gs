@@ -1,19 +1,20 @@
 /**
- * CSF Event Planning & Approval System
+ * CSF & MIT ADT Event Planning & Approval System
  * Production-Ready Google Apps Script Backend & JSON API for Vercel
  * 
- * Supports:
+ * Features:
  * - Native Apps Script Web App & External Vercel API via doGet / doPost
  * - Google Account authentication & session verification
- * - Role-Based Access Control: 'admin' and 'member' only
- * - Admin User Management (assigning member/admin roles)
- * - Admin approval gate (only approved events visible to all members)
- * - "Arrange Google Meet" integration
- * - Daily morning event notification digest sent to all members
- * - Real-time comments / thoughts per event
+ * - Role-Based Access Control: 'admin' and 'member'
+ * - Automatic Email Broadcast on Event Approval (to all active members & admins)
+ * - Automated 12-Hour Before Event Reminder Email (hourly cloud trigger)
+ * - Daily Morning Event Notification Digest (8:00 AM cloud trigger)
+ * - Admin alert on new event submission
+ * - Google Meet link integration & Google Calendar sync with 12h alarm
  * - Venue and time conflict detection
- * - Google Calendar synchronization
  */
+
+const APP_PORTAL_URL = 'https://mitadt-calender.vercel.app';
 
 const SHEETS = {
   EVENTS: 'Events',
@@ -39,7 +40,7 @@ function doGet(e) {
 
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
-    .setTitle('CSF Event Calendar & Approval Portal')
+    .setTitle('MIT ADT - CSF Event Calendar & Approval Portal')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -92,6 +93,14 @@ function handleApiRequest_(action, data) {
         result = broadcastEventNotification(data.eventId, userEmail);
         break;
 
+      case 'check12HourReminders':
+        result = check12HourReminders();
+        break;
+
+      case 'send12HourReminderNow':
+        result = send12HourReminderNow(data.eventId, userEmail);
+        break;
+
       case 'addComment':
         result = addComment(data.eventId, data.text, userEmail, userName);
         break;
@@ -110,6 +119,10 @@ function handleApiRequest_(action, data) {
 
       case 'triggerDailyNotificationNow':
         result = triggerDailyNotificationNow(userEmail);
+        break;
+
+      case 'setupAllTriggers':
+        result = { ok: true, message: setupAllTriggers() };
         break;
 
       case 'setupProject':
@@ -145,7 +158,7 @@ function setupProject() {
         'Venue', 'Coordinator', 'Speaker', 'Audience', 'ExpectedParticipants',
         'Description', 'AlternativeDate', 'SubmittedBy', 'SubmittedEmail',
         'Status', 'AdminComment', 'DecisionBy', 'DecisionDate', 'CreatedAt',
-        'CalendarEventID', 'Guide', 'ArrangeMeet', 'MeetLink'
+        'CalendarEventID', 'Guide', 'ArrangeMeet', 'MeetLink', 'Reminder12hSent'
       ]
     },
     {
@@ -160,7 +173,8 @@ function setupProject() {
       name: SHEETS.SETTINGS,
       headers: ['Setting', 'Value'],
       defaults: [
-        ['AppTitle', 'CSF Event Planning & Approval System'],
+        ['AppTitle', 'MIT ADT - CSF Event Calendar'],
+        ['AppUrl', APP_PORTAL_URL],
         ['CalendarId', ''],
         ['DailyDigestHour', '8'],
         ['SendDigestIfEmpty', 'false'],
@@ -195,9 +209,41 @@ function setupProject() {
     ensureAdminExists_(deployerEmail);
   }
 
-  setupDailyNotificationTrigger();
+  setupAllTriggers();
 
-  return 'Setup completed successfully. Sheets verified, admin initialized, and daily notification trigger configured.';
+  return 'Setup completed successfully. Sheets verified, admin initialized, and 12-hour reminder + daily digest triggers configured.';
+}
+
+/**
+ * Configure automated Cloud Triggers:
+ * 1. Hourly check for events starting in 12 hours
+ * 2. Daily morning digest at 8:00 AM
+ */
+function setupAllTriggers() {
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => {
+    const fn = t.getHandlerFunction();
+    if (fn === 'sendDailyEventDigest' || fn === 'check12HourReminders' || fn === 'setupDailyNotificationTrigger') {
+      try {
+        ScriptApp.deleteTrigger(t);
+      } catch (err) {}
+    }
+  });
+
+  // 1. Daily morning digest at 8:00 AM
+  ScriptApp.newTrigger('sendDailyEventDigest')
+    .timeBased()
+    .everyDays(1)
+    .atHour(8)
+    .create();
+
+  // 2. Hourly check for upcoming events within 12 hours
+  ScriptApp.newTrigger('check12HourReminders')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  return 'Automated Cloud Triggers Active: Daily morning digest at 8:00 AM and 12-Hour Event Reminder check every hour.';
 }
 
 /**
@@ -249,73 +295,125 @@ function getUserByEmail_(email, optName) {
   const emailIdx = headers.indexOf('email') >= 0 ? headers.indexOf('email') : 1;
   const roleIdx = headers.indexOf('role') >= 0 ? headers.indexOf('role') : 2;
 
+  const target = email.trim().toLowerCase();
   for (let i = 1; i < values.length; i++) {
     const rowEmail = (values[i][emailIdx] || '').trim().toLowerCase();
-    if (rowEmail === email || (email.includes('mandarj2412') && rowEmail.includes('mandarj2412'))) {
-      let rawRole = (values[i][roleIdx] || '').trim().toLowerCase();
-      let normalizedRole = (rawRole === 'admin' || rawRole === 'hod' || email.includes('mandarj2412')) ? ROLES.ADMIN : ROLES.MEMBER;
-      let displayName = values[i][nameIdx] || optName || email.split('@')[0];
-      return { name: displayName, email: email, role: normalizedRole };
+    if (rowEmail === target) {
+      let role = (values[i][roleIdx] || ROLES.MEMBER).trim().toLowerCase();
+      if (![ROLES.ADMIN, ROLES.MEMBER].includes(role)) {
+        role = (role === 'hod' || role === 'admin') ? ROLES.ADMIN : ROLES.MEMBER;
+      }
+      return {
+        name: values[i][nameIdx] || optName || 'User',
+        email: rowEmail,
+        role: role
+      };
     }
   }
 
-  // Not found in Users: Auto-register
-  const ownerEmail = (Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
-  const isOwner = (email === ownerEmail) || (values.length <= 1) || email.includes('mandarj2412');
-  const assignedRole = isOwner ? ROLES.ADMIN : ROLES.MEMBER;
-  const displayName = optName || email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  // Auto-register as admin if primary owner, otherwise member
+  const isPrimaryAdmin = target === 'mandarj2412@gmail.com' || target === 'mandar.joshi@mituniversity.edu.in';
+  const role = isPrimaryAdmin ? ROLES.ADMIN : ROLES.MEMBER;
+  const name = optName || (target.split('@')[0]);
+  sheet.appendRow([name, target, role, 'Active', new Date()]);
 
-  sheet.appendRow([displayName, email, assignedRole, 'Active', new Date()]);
-  return { name: displayName, email: email, role: assignedRole };
+  return { name: name, email: target, role: role };
 }
 
 function ensureAdminExists_(adminEmail) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.USERS);
+  if (!sheet) return;
+
   const values = sheet.getDataRange().getDisplayValues();
-  
-  let found = false;
+  const target = adminEmail.trim().toLowerCase();
   for (let i = 1; i < values.length; i++) {
-    const rowEmail = (values[i][1] || '').trim().toLowerCase();
-    const rowRole = (values[i][2] || '').trim().toLowerCase();
-    if (rowEmail === adminEmail) {
-      found = true;
-      if (rowRole !== 'admin') sheet.getRange(i + 1, 3).setValue(ROLES.ADMIN);
+    if ((values[i][1] || '').trim().toLowerCase() === target) {
+      sheet.getRange(i + 1, 3).setValue(ROLES.ADMIN);
+      return;
     }
   }
 
-  if (!found) {
-    sheet.appendRow(['Admin', adminEmail, ROLES.ADMIN, 'Active', new Date()]);
+  sheet.appendRow([target.split('@')[0], target, ROLES.ADMIN, 'Active', new Date()]);
+}
+
+/**
+ * Returns clean, deduplicated recipient email list for broadcasts and reminders.
+ */
+function getAllRecipientEmails_(optEvent) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const userSheet = ss.getSheetByName(SHEETS.USERS);
+  const emailSet = new Set();
+
+  // Core administrators always included
+  const primaryAdmins = ['mandarj2412@gmail.com', 'mandar.joshi@mituniversity.edu.in'];
+  primaryAdmins.forEach(e => emailSet.add(e.toLowerCase().trim()));
+
+  // Active users registered in Users sheet
+  if (userSheet) {
+    const userData = userSheet.getDataRange().getDisplayValues();
+    for (let i = 1; i < userData.length; i++) {
+      const em = (userData[i][1] || '').trim().toLowerCase();
+      const status = (userData[i][3] || 'Active').trim().toLowerCase();
+      // Skip dummy template emails and disabled accounts
+      if (em && em.includes('@') && !em.includes('yourcollege.edu') && status !== 'disabled') {
+        emailSet.add(em);
+      }
+    }
+  }
+
+  // Include event submitter and coordinator
+  if (optEvent) {
+    const subEmail = (optEvent.SubmittedEmail || optEvent.SubmittedBy || '').trim().toLowerCase();
+    if (subEmail && subEmail.includes('@') && !subEmail.includes('yourcollege.edu')) {
+      emailSet.add(subEmail);
+    }
+    const coordEmail = (optEvent.CoordinatorEmail || optEvent.Coordinator || '').trim().toLowerCase();
+    if (coordEmail && coordEmail.includes('@') && !coordEmail.includes('yourcollege.edu')) {
+      emailSet.add(coordEmail);
+    }
+  }
+
+  return Array.from(emailSet);
+}
+
+/**
+ * Dual-engine reliable email sender: tries MailApp first, then GmailApp.
+ */
+function sendEmailSafe_(to, subject, htmlBody, fromName) {
+  const senderName = fromName || 'MIT ADT Event Calendar';
+  try {
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: senderName
+    });
+    return { ok: true };
+  } catch (err1) {
+    try {
+      GmailApp.sendEmail(to, subject, '', {
+        htmlBody: htmlBody,
+        name: senderName
+      });
+      return { ok: true };
+    } catch (err2) {
+      Logger.log(`Failed sending email to ${to}: MailApp: ${err1.message} | GmailApp: ${err2.message}`);
+      return { ok: false, error: err1.message || err2.message };
+    }
   }
 }
 
-function getSettings_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.SETTINGS);
-  if (!sheet) return {};
-  const v = sheet.getDataRange().getValues(), out = {};
-  for (let i = 1; i < v.length; i++) {
-    if (v[i][0]) out[String(v[i][0]).trim()] = v[i][1];
-  }
-  return out;
-}
-
-function getAllRawEvents_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.EVENTS);
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
-  const h = data[0];
-  return data.slice(1).filter(r => r[0]).map(r => rowToObject_(h, r));
-}
-
+/**
+ * Reads all events filtered by user permissions.
+ */
 function getEventsForUser_(user) {
   const allEvents = getAllRawEvents_();
-  if (user.role === ROLES.ADMIN) {
+  if (user && user.role === ROLES.ADMIN) {
     return allEvents;
   }
-  const userEmail = (user.email || '').toLowerCase();
+
+  const userEmail = (user ? user.email : '').toLowerCase();
   return allEvents.filter(e => {
     if (e.Status === 'Approved') return true;
     if (userEmail && (e.SubmittedEmail || '').toLowerCase() === userEmail) return true;
@@ -323,35 +421,80 @@ function getEventsForUser_(user) {
   });
 }
 
+function getAllRawEvents_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEETS.EVENTS);
+  if (!sheet) {
+    setupProject();
+    sheet = ss.getSheetByName(SHEETS.EVENTS);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+
+  const headers = data[0];
+  const events = [];
+  for (let i = 1; i < data.length; i++) {
+    const obj = rowToObject_(headers, data[i]);
+    events.push(obj);
+  }
+
+  return events;
+}
+
+function getSettings_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEETS.SETTINGS);
+  if (!sheet) {
+    setupProject();
+    sheet = ss.getSheetByName(SHEETS.SETTINGS);
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const settings = {};
+  for (let i = 1; i < data.length; i++) {
+    const key = clean_(data[i][0]);
+    if (key) settings[key] = clean_(data[i][1]);
+  }
+  return settings;
+}
+
 function getEventDetails(eventId, clientEmail) {
   const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email);
-  const event = findEventById_(eventId);
+  const allEvents = getAllRawEvents_();
+  const event = allEvents.find(e => String(e.EventID) === String(eventId));
   if (!event) throw new Error('Event not found.');
 
-  if (user.role !== ROLES.ADMIN && event.Status !== 'Approved' && (event.SubmittedEmail || '').toLowerCase() !== user.email.toLowerCase()) {
-    throw new Error('Access denied to view this unapproved event.');
+  const isOwner = (event.SubmittedEmail || '').toLowerCase() === email;
+  const isAdmin = user.role === ROLES.ADMIN;
+  if (event.Status !== 'Approved' && !isOwner && !isAdmin) {
+    throw new Error('Access denied: Event is pending administrative approval.');
   }
 
-  return {
-    event: event,
-    comments: getCommentsForEvent_(eventId)
-  };
+  const comments = getCommentsForEvent_(eventId);
+  return { event: event, comments: comments };
 }
 
 function submitEvent(payload, clientEmail, clientName) {
   const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email, clientName);
+
   validateEventPayload_(payload);
+  const conflicts = findConflicts_(payload);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEETS.EVENTS);
+  if (!sheet) {
+    setupProject();
+    sheet = ss.getSheetByName(SHEETS.EVENTS);
+  }
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = indexMap_(headers);
 
   const eventId = 'EVT-' + Utilities.getUuid().slice(0, 8).toUpperCase();
   const now = new Date();
-  const conflicts = findConflicts_(payload, null);
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEETS.EVENTS);
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const idx = indexMap_(headers);
 
   const row = new Array(headers.length).fill('');
   setVal_(row, idx.EventID, eventId);
@@ -378,8 +521,16 @@ function submitEvent(payload, clientEmail, clientName) {
   setVal_(row, idx.Guide, clean_(payload.guide));
   setVal_(row, idx.ArrangeMeet, payload.arrangeMeet ? 'TRUE' : 'FALSE');
   setVal_(row, idx.MeetLink, clean_(payload.meetLink));
+  setVal_(row, idx.Reminder12hSent, 'FALSE');
 
   sheet.appendRow(row);
+
+  // Notify admin that a new event was submitted
+  try {
+    sendEventSubmissionNotificationToAdmin_(payload, user);
+  } catch (err) {
+    Logger.log('Admin submission alert notice: ' + err.message);
+  }
 
   return {
     ok: true,
@@ -478,7 +629,7 @@ function setEventStatus(eventId, status, adminComment, customMeetLink, clientEma
       conflicts: conflicts,
       meetLink: generatedMeetLink,
       emailsSent: emailResult.sent,
-      message: `Event approved successfully! Notification email dispatched to ${emailResult.sent} members.`
+      message: `Event approved successfully! Notification email dispatched to ${emailResult.sent} members & admins.`
     };
   } else if (status === 'Rejected' && event.CalendarEventID) {
     try {
@@ -499,7 +650,6 @@ function setEventStatus(eventId, status, adminComment, customMeetLink, clientEma
 
 /**
  * Broadcast event announcement email to all registered members and admins.
- * Can be called manually by Admin from UI or automatically on approval.
  */
 function broadcastEventNotification(eventId, clientEmail) {
   const email = clientEmail || getCurrentUserEmail_();
@@ -521,42 +671,21 @@ function broadcastEventNotification(eventId, clientEmail) {
   };
 }
 
+/**
+ * Sends event approval broadcast to all registered members and admins.
+ */
 function sendEventApprovalBroadcast_(event, approverName, adminComment) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const userSheet = ss.getSheetByName(SHEETS.USERS);
-  const emailSet = new Set();
-
-  if (userSheet) {
-    const userData = userSheet.getDataRange().getDisplayValues();
-    for (let i = 1; i < userData.length; i++) {
-      const em = (userData[i][1] || '').trim().toLowerCase();
-      const status = (userData[i][3] || 'Active').trim().toLowerCase();
-      if (em && em.includes('@') && status !== 'disabled') {
-        emailSet.add(em);
-      }
-    }
-  }
-
-  // Always ensure Mandar and event coordinators/submitters are included
-  emailSet.add('mandarj2412@gmail.com');
-  if (event.SubmittedBy && String(event.SubmittedBy).includes('@')) {
-    emailSet.add(String(event.SubmittedBy).trim().toLowerCase());
-  }
-  if (event.CoordinatorEmail && String(event.CoordinatorEmail).includes('@')) {
-    emailSet.add(String(event.CoordinatorEmail).trim().toLowerCase());
-  }
-
-  const recipients = Array.from(emailSet);
+  const recipients = getAllRecipientEmails_(event);
   if (recipients.length === 0) return { ok: true, sent: 0, total: 0 };
 
   const meetSection = event.MeetLink ? `
     <div style="margin: 20px 0; background: #e8f0fe; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #c2e7ff;">
       <h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 15px;">📹 Google Meet Video Call Link</h4>
       <p style="margin: 0 0 12px 0; color: #5f6368; font-size: 13px;">Official video conference link for this event:</p>
-      <a href="${event.MeetLink}" target="_blank" style="background: #1a73e8; color: #ffffff; text-decoration: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+      <a href="${escHtml_(event.MeetLink)}" target="_blank" style="background: #1a73e8; color: #ffffff; text-decoration: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
         Join Google Meet
       </a>
-      <div style="margin-top: 8px; font-size: 12px; color: #1a73e8; word-break: break-all;">${event.MeetLink}</div>
+      <div style="margin-top: 8px; font-size: 12px; color: #1a73e8; word-break: break-all;">${escHtml_(event.MeetLink)}</div>
     </div>
   ` : '';
 
@@ -583,7 +712,7 @@ function sendEventApprovalBroadcast_(event, approverName, adminComment) {
             ${escHtml_(event.Title)}
           </h1>
           <p style="color: #94a3b8; margin: 6px 0 0 0; font-size: 13px;">
-            ${escHtml_(event.Type || 'CSF Event')} • Approved by ${escHtml_(approverName)}
+            ${escHtml_(event.Type || 'Event')} • Approved by ${escHtml_(approverName)}
           </p>
         </div>
 
@@ -609,7 +738,7 @@ function sendEventApprovalBroadcast_(event, approverName, adminComment) {
             </tr>` : ''}
             <tr>
               <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👥 Audience:</td>
-              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.TargetAudience || 'All Faculty / Members')}</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.TargetAudience || event.Audience || 'All Faculty / Members')}</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👤 Coordinator:</td>
@@ -633,13 +762,13 @@ function sendEventApprovalBroadcast_(event, approverName, adminComment) {
           </div>` : ''}
 
           <div style="text-align: center; margin: 28px 0 10px 0;">
-            <a href="https://csf-calender.vercel.app" target="_blank" style="background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
-              View Full CSF Calendar
+            <a href="${APP_PORTAL_URL}" target="_blank" style="background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+              View Full Event Calendar
             </a>
           </div>
 
           <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
-            CSF Event Planning &amp; Approval System • Official Notification to all registered members and admins
+            MIT ADT Event Calendar • Official Notification to all registered members &amp; admins
           </div>
         </div>
       </div>
@@ -647,19 +776,285 @@ function sendEventApprovalBroadcast_(event, approverName, adminComment) {
     </html>
   `;
 
-  const subject = `🎉 [CSF Event Approved] ${event.Title} - ${event.Date}`;
+  const subject = `🎉 [Event Approved] ${event.Title} - ${event.Date}`;
 
   let count = 0;
   recipients.forEach(r => {
-    try {
-      MailApp.sendEmail({ to: r, subject: subject, htmlBody: emailBody });
-      count++;
-    } catch (e) {
-      Logger.log(`Failed sending email to ${r}: ${e.message}`);
-    }
+    const res = sendEmailSafe_(r, subject, emailBody, 'MIT ADT Event Calendar');
+    if (res.ok) count++;
   });
 
   return { ok: true, sent: count, total: recipients.length };
+}
+
+/**
+ * Scans all approved events and sends reminders for any starting in <= 12 hours.
+ * Runs automatically every hour via cloud trigger.
+ */
+function check12HourReminders() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.EVENTS);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { ok: true, sent: 0, checked: 0, message: 'No events found.' };
+  }
+
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  let remIdx = headers.indexOf('Reminder12hSent');
+
+  // Auto-add column if not present
+  if (remIdx === -1) {
+    remIdx = headers.length;
+    sheet.getRange(1, remIdx + 1).setValue('Reminder12hSent').setFontWeight('bold').setBackground('#E2E8F0');
+    headers.push('Reminder12hSent');
+  }
+
+  const now = new Date();
+  const nowMs = now.getTime();
+  let remindersSent = 0;
+  let checkedCount = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const evt = rowToObject_(headers, values[i]);
+    const rowNum = i + 1;
+    const status = String(evt.Status || '').trim().toLowerCase();
+
+    if (status !== 'approved') continue;
+    checkedCount++;
+
+    const remFlag = String(evt.Reminder12hSent || '').trim().toUpperCase();
+    if (remFlag === 'TRUE' || remFlag === 'SKIPPED') continue;
+
+    try {
+      const eventStart = combineDateTime_(evt.Date, evt.StartTime);
+      const startMs = eventStart.getTime();
+      const diffMs = startMs - nowMs;
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      // If event starts within 12.5 hours and is in future
+      if (diffMs > 0 && diffHours <= 12.5) {
+        const sendRes = send12HourReminderEmail_(evt, diffHours);
+        if (sendRes.sent > 0) {
+          sheet.getRange(rowNum, remIdx + 1).setValue('TRUE');
+          remindersSent++;
+        }
+      } else if (diffMs <= 0) {
+        // Event has already passed
+        sheet.getRange(rowNum, remIdx + 1).setValue('SKIPPED');
+      }
+    } catch (err) {
+      Logger.log(`Error checking 12h reminder for event ${evt.EventID}: ${err.message}`);
+    }
+  }
+
+  return {
+    ok: true,
+    sent: remindersSent,
+    checked: checkedCount,
+    message: `12-hour reminder scan complete: Sent reminders for ${remindersSent} event(s) out of ${checkedCount} approved events.`
+  };
+}
+
+/**
+ * Sends a 12-hour reminder email to all team members & coordinators.
+ */
+function send12HourReminderEmail_(event, diffHours) {
+  const recipients = getAllRecipientEmails_(event);
+  if (recipients.length === 0) return { ok: true, sent: 0, total: 0 };
+
+  const hoursRemaining = Math.max(1, Math.round(diffHours));
+
+  const meetSection = event.MeetLink ? `
+    <div style="margin: 20px 0; background: #e8f0fe; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #c2e7ff;">
+      <h4 style="margin: 0 0 8px 0; color: #1a73e8; font-size: 15px;">📹 Google Meet Meeting Link</h4>
+      <p style="margin: 0 0 12px 0; color: #5f6368; font-size: 13px;">Join the video call when the event begins:</p>
+      <a href="${escHtml_(event.MeetLink)}" target="_blank" style="background: #1a73e8; color: #ffffff; text-decoration: none; padding: 10px 24px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+        Join Google Meet
+      </a>
+      <div style="margin-top: 8px; font-size: 12px; color: #1a73e8; word-break: break-all;">${escHtml_(event.MeetLink)}</div>
+    </div>
+  ` : '';
+
+  const emailBody = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px 0;">
+      <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+        
+        <!-- Header -->
+        <div style="background: #b45309; padding: 24px 30px; text-align: left;">
+          <span style="background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; text-transform: uppercase; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;">
+            ⏰ Starting in ~${hoursRemaining} Hours
+          </span>
+          <h1 style="color: #ffffff; font-size: 22px; margin: 0; font-weight: 700;">
+            ${escHtml_(event.Title)}
+          </h1>
+          <p style="color: #fde68a; margin: 6px 0 0 0; font-size: 13px;">
+            ${escHtml_(event.Type || 'Event')} • Scheduled on ${escHtml_(event.Date)}
+          </p>
+        </div>
+
+        <!-- Body Details -->
+        <div style="padding: 28px 30px;">
+          <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0;">
+            This is a reminder that the following approved event is starting soon:
+          </p>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px;">
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; width: 130px; font-weight: 600;">📅 Date:</td>
+              <td style="padding: 8px 0; color: #0f172a; font-weight: 700;">${escHtml_(event.Date)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">⏰ Time:</td>
+              <td style="padding: 8px 0; color: #0f172a; font-weight: 600;">${escHtml_(event.StartTime)} – ${escHtml_(event.EndTime)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">📍 Venue / Room:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Venue || 'Campus')}</td>
+            </tr>
+            ${event.Speaker ? `
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">🎤 Speaker:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Speaker)}</td>
+            </tr>` : ''}
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👥 Audience:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.TargetAudience || event.Audience || 'All Faculty / Members')}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">👤 Coordinator:</td>
+              <td style="padding: 8px 0; color: #0f172a;">${escHtml_(event.Coordinator || 'CSF Team')}</td>
+            </tr>
+          </table>
+
+          ${meetSection}
+
+          ${event.Description ? `
+          <div style="margin: 16px 0; padding: 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #334155; font-size: 13px; display: block; margin-bottom: 4px;">Description:</strong>
+            <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.5;">${escHtml_(event.Description)}</p>
+          </div>` : ''}
+
+          ${event.Guide ? `
+          <div style="margin: 16px 0; padding: 14px; background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0;">
+            <strong style="color: #334155; font-size: 13px; display: block; margin-bottom: 4px;">Guidelines & Instructions:</strong>
+            <p style="margin: 0; color: #475569; font-size: 13px; line-height: 1.5;">${escHtml_(event.Guide)}</p>
+          </div>` : ''}
+
+          <div style="text-align: center; margin: 28px 0 10px 0;">
+            <a href="${APP_PORTAL_URL}" target="_blank" style="background: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+              Open MIT ADT Calendar
+            </a>
+          </div>
+
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
+            MIT ADT Event Calendar • 12-Hour Automated Event Reminder
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const subject = `⏰ [12-Hour Reminder] ${event.Title} at ${event.StartTime} (${event.Date})`;
+
+  let count = 0;
+  recipients.forEach(r => {
+    const res = sendEmailSafe_(r, subject, emailBody, 'MIT ADT Event Reminder');
+    if (res.ok) count++;
+  });
+
+  return { ok: true, sent: count, total: recipients.length };
+}
+
+/**
+ * Allows manual admin trigger of 12-hour reminder for a specific event.
+ */
+function send12HourReminderNow(eventId, clientEmail) {
+  const email = clientEmail || getCurrentUserEmail_();
+  const user = getUserByEmail_(email);
+  if (user.role !== ROLES.ADMIN) {
+    throw new Error('Access denied: Only an Admin can dispatch reminders.');
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.EVENTS);
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idx = indexMap_(headers);
+
+  let targetEvent = null;
+  let row = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idx.EventID]) === String(eventId)) {
+      row = i + 1;
+      targetEvent = rowToObject_(headers, data[i]);
+      break;
+    }
+  }
+
+  if (!targetEvent) throw new Error('Event not found.');
+
+  const res = send12HourReminderEmail_(targetEvent, 12);
+  let remIdx = headers.indexOf('Reminder12hSent');
+  if (remIdx === -1) {
+    remIdx = headers.length;
+    sheet.getRange(1, remIdx + 1).setValue('Reminder12hSent').setFontWeight('bold').setBackground('#E2E8F0');
+  }
+  sheet.getRange(row, remIdx + 1).setValue('TRUE');
+
+  return {
+    ok: true,
+    sent: res.sent,
+    total: res.total,
+    message: `12-hour reminder email dispatched to ${res.sent} members & admins.`
+  };
+}
+
+/**
+ * Notifies admin when a team member proposes a new event.
+ */
+function sendEventSubmissionNotificationToAdmin_(event, user) {
+  const adminEmails = ['mandarj2412@gmail.com', 'mandar.joshi@mituniversity.edu.in'];
+
+  const subject = `📋 [Action Required] New Event Proposed: ${event.title || event.Title}`;
+  const emailBody = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#F8FAFC;margin:0;padding:24px;color:#0F172A;">
+      <div style="max-width:580px;margin:auto;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.06);border:1px solid #E2E8F0;">
+        <div style="background:#2563EB;padding:20px 24px;color:#FFFFFF;">
+          <span style="background:#DBEAFE;color:#1E40AF;font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;">Pending Approval</span>
+          <h2 style="margin:8px 0 0;font-size:20px;">New Event Submitted</h2>
+        </div>
+        <div style="padding:24px;">
+          <p style="margin-top:0;font-size:14px;color:#334155;">
+            <strong>${escHtml_(user.name || 'A team member')}</strong> (${escHtml_(user.email)}) has proposed a new event that requires administrative approval:
+          </p>
+          <table style="width:100%;font-size:14px;color:#334155;border-collapse:collapse;margin:12px 0;">
+            <tr><td style="width:120px;font-weight:600;padding:4px 0;color:#64748B;">📌 Title:</td><td><strong>${escHtml_(event.title || event.Title)}</strong></td></tr>
+            <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">📅 Date:</td><td>${escHtml_(event.date || event.Date)}</td></tr>
+            <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">⏰ Time:</td><td>${escHtml_(event.startTime || event.StartTime)} - ${escHtml_(event.endTime || event.EndTime)}</td></tr>
+            <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">📍 Venue:</td><td>${escHtml_(event.venue || event.Venue)}</td></tr>
+            <tr><td style="font-weight:600;padding:4px 0;color:#64748B;">👤 Coordinator:</td><td>${escHtml_(event.coordinator || event.Coordinator)}</td></tr>
+          </table>
+          <div style="text-align:center;margin:24px 0 10px;">
+            <a href="${APP_PORTAL_URL}" target="_blank" style="background:#2563EB;color:#FFFFFF;padding:10px 24px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;display:inline-block;">
+              Review &amp; Approve Event
+            </a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  adminEmails.forEach(adm => {
+    sendEmailSafe_(adm, subject, emailBody, 'MIT ADT Calendar System');
+  });
 }
 
 function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
@@ -690,6 +1085,9 @@ function syncApprovedEventToCalendar_(eventId, event, row, idx, sheet) {
 
   try {
     created.setColor(CalendarApp.EventColor.GREEN);
+    // Add 12-hour reminder in Google Calendar
+    created.addEmailReminder(720);
+    created.addPopupReminder(720);
   } catch (err) {}
 
   if (idx.CalendarEventID !== undefined) {
@@ -708,25 +1106,32 @@ function removeCalendarEvent_(id) {
 }
 
 function findConflicts_(payload, ignoreId) {
-  const date = String(payload.date || '');
-  const s = minutes_(payload.startTime);
-  const en = minutes_(payload.endTime);
+  const dateStr = clean_(payload.date);
+  const startMin = minutes_(payload.startTime);
+  const endMin = minutes_(payload.endTime);
   const venue = clean_(payload.venue).toLowerCase();
 
-  if (!date || s === null || en === null) return [];
+  if (!dateStr || startMin === null || endMin === null) return [];
 
-  return getAllRawEvents_().filter(e => {
+  const allEvents = getAllRawEvents_();
+  return allEvents.filter(e => {
     if (ignoreId && String(e.EventID) === String(ignoreId)) return false;
-    if (e.Status === 'Rejected' || String(e.Date) !== date) return false;
-    const es = minutes_(e.StartTime);
-    const ee = minutes_(e.EndTime);
-    const timeOverlap = (es !== null && ee !== null && s < ee && en > es);
-    const venueOverlap = (!venue || clean_(e.Venue).toLowerCase() === venue);
-    return timeOverlap && venueOverlap;
+    if (e.Status !== 'Approved' && e.Status !== 'Pending') return false;
+    if (String(e.Date) !== dateStr) return false;
+
+    const eStart = minutes_(e.StartTime);
+    const eEnd = minutes_(e.EndTime);
+    if (eStart === null || eEnd === null) return false;
+
+    const timeOverlap = Math.max(startMin, eStart) < Math.min(endMin, eEnd);
+    if (!timeOverlap) return false;
+
+    const sameVenue = venue && clean_(e.Venue).toLowerCase() === venue;
+    return sameVenue || timeOverlap;
   }).map(e => ({
     eventId: e.EventID,
     title: e.Title,
-    time: `${e.StartTime}-${e.EndTime}`,
+    time: `${e.StartTime} - ${e.EndTime}`,
     venue: e.Venue,
     status: e.Status
   }));
@@ -734,106 +1139,76 @@ function findConflicts_(payload, ignoreId) {
 
 function getAllUsers(clientEmail) {
   const email = clientEmail || getCurrentUserEmail_();
-  const currentUser = getUserByEmail_(email);
-  if (currentUser.role !== ROLES.ADMIN) {
-    throw new Error('Access denied: Only an Admin can access User Management.');
+  const user = getUserByEmail_(email);
+  if (user.role !== ROLES.ADMIN) {
+    throw new Error('Access denied: Admin role required.');
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.USERS);
+  if (!sheet) return [];
+
   const data = sheet.getDataRange().getDisplayValues();
   if (data.length < 2) return [];
 
-  const headers = data[0].map(h => String(h).trim().toLowerCase());
-  const nameIdx = headers.indexOf('name') >= 0 ? headers.indexOf('name') : 0;
-  const emailIdx = headers.indexOf('email') >= 0 ? headers.indexOf('email') : 1;
-  const roleIdx = headers.indexOf('role') >= 0 ? headers.indexOf('role') : 2;
-  const statusIdx = headers.indexOf('status') >= 0 ? headers.indexOf('status') : 3;
-
-  const list = [];
-  for (let i = 1; i < data.length; i++) {
-    const userEmail = (data[i][emailIdx] || '').trim().toLowerCase();
-    if (!userEmail) continue;
-    const rawRole = (data[i][roleIdx] || '').trim().toLowerCase();
-    const role = (rawRole === 'admin' || rawRole === 'hod') ? ROLES.ADMIN : ROLES.MEMBER;
-    list.push({
-      name: data[i][nameIdx] || userEmail.split('@')[0],
-      email: userEmail,
-      role: role,
-      status: data[i][statusIdx] || 'Active'
-    });
-  }
-  return list;
+  return data.slice(1).map(r => ({
+    name: r[0] || '',
+    email: (r[1] || '').trim().toLowerCase(),
+    role: (r[2] || 'member').trim().toLowerCase(),
+    status: r[3] || 'Active'
+  })).filter(u => u.email);
 }
 
 function updateUserRole(targetEmail, newRole, clientEmail) {
-  const adminEmail = clientEmail || getCurrentUserEmail_();
-  const adminUser = getUserByEmail_(adminEmail);
-  if (adminUser.role !== ROLES.ADMIN) {
-    throw new Error('Access denied: Only an Admin can assign roles.');
+  const email = clientEmail || getCurrentUserEmail_();
+  const user = getUserByEmail_(email);
+  if (user.role !== ROLES.ADMIN) {
+    throw new Error('Access denied: Only an Admin can change roles.');
   }
 
-  const target = clean_(targetEmail).toLowerCase();
-  const normalizedRole = clean_(newRole).toLowerCase();
-  if (![ROLES.ADMIN, ROLES.MEMBER].includes(normalizedRole)) {
-    throw new Error('Invalid role. Allowed roles are "admin" and "member".');
+  const cleanRole = clean_(newRole).toLowerCase();
+  if (![ROLES.ADMIN, ROLES.MEMBER].includes(cleanRole)) {
+    throw new Error('Invalid role.');
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.USERS);
   const data = sheet.getDataRange().getDisplayValues();
-  const headers = data[0].map(h => String(h).trim().toLowerCase());
-  const emailIdx = headers.indexOf('email') >= 0 ? headers.indexOf('email') : 1;
-  const roleIdx = headers.indexOf('role') >= 0 ? headers.indexOf('role') : 2;
+  const target = clean_(targetEmail).toLowerCase();
 
-  if (normalizedRole === ROLES.MEMBER) {
-    let adminCount = 0;
-    for (let i = 1; i < data.length; i++) {
-      const r = (data[i][roleIdx] || '').trim().toLowerCase();
-      if (r === 'admin' || r === 'hod') adminCount++;
-    }
-    if (adminCount <= 1 && (target === adminEmail || data.find(row => (row[emailIdx] || '').toLowerCase() === target && ['admin','hod'].includes((row[roleIdx]||'').toLowerCase())))) {
-      throw new Error('Action blocked: Cannot demote the only remaining Admin.');
-    }
-  }
-
-  let updated = false;
   for (let i = 1; i < data.length; i++) {
-    if ((data[i][emailIdx] || '').trim().toLowerCase() === target) {
-      sheet.getRange(i + 1, roleIdx + 1).setValue(normalizedRole);
-      updated = true;
-      break;
+    if ((data[i][1] || '').trim().toLowerCase() === target) {
+      sheet.getRange(i + 1, 3).setValue(cleanRole);
+      return { ok: true, email: target, role: cleanRole };
     }
   }
 
-  if (!updated) {
-    sheet.appendRow([target.split('@')[0], target, normalizedRole, 'Active', new Date()]);
-  }
-
-  return { ok: true, email: target, role: normalizedRole };
+  sheet.appendRow([target.split('@')[0], target, cleanRole, 'Active', new Date()]);
+  return { ok: true, email: target, role: cleanRole };
 }
 
 function addUser(name, email, role, clientEmail) {
   const adminEmail = clientEmail || getCurrentUserEmail_();
-  const adminUser = getUserByEmail_(adminEmail);
-  if (adminUser.role !== ROLES.ADMIN) {
+  const user = getUserByEmail_(adminEmail);
+  if (user.role !== ROLES.ADMIN) {
     throw new Error('Access denied: Only an Admin can add users.');
   }
 
   const cleanEmail = clean_(email).toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    throw new Error('Please provide a valid email address.');
-  }
+  if (!cleanEmail || !cleanEmail.includes('@')) throw new Error('A valid email is required.');
 
-  const assignedRole = clean_(role).toLowerCase() === ROLES.ADMIN ? ROLES.ADMIN : ROLES.MEMBER;
+  const assignedRole = [ROLES.ADMIN, ROLES.MEMBER].includes(clean_(role).toLowerCase()) ? clean_(role).toLowerCase() : ROLES.MEMBER;
   const displayName = clean_(name) || cleanEmail.split('@')[0];
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEETS.USERS);
   const data = sheet.getDataRange().getDisplayValues();
+
   for (let i = 1; i < data.length; i++) {
     if ((data[i][1] || '').trim().toLowerCase() === cleanEmail) {
-      throw new Error(`User with email "${cleanEmail}" is already registered.`);
+      sheet.getRange(i + 1, 1).setValue(displayName);
+      sheet.getRange(i + 1, 3).setValue(assignedRole);
+      return { ok: true, user: { name: displayName, email: cleanEmail, role: assignedRole } };
     }
   }
 
@@ -841,6 +1216,10 @@ function addUser(name, email, role, clientEmail) {
   return { ok: true, user: { name: displayName, email: cleanEmail, role: assignedRole } };
 }
 
+/**
+ * Daily morning notification digest.
+ * Sends today's approved events, or upcoming approved events if today has none.
+ */
 function sendDailyEventDigest() {
   const timeZone = Session.getScriptTimeZone();
   const todayStr = Utilities.formatDate(new Date(), timeZone, 'yyyy-MM-dd');
@@ -869,24 +1248,7 @@ function sendDailyEventDigest() {
 
   eventsToSend.sort((a, b) => String(a.Date).localeCompare(String(b.Date)));
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const userSheet = ss.getSheetByName(SHEETS.USERS);
-  const emailSet = new Set();
-
-  if (userSheet) {
-    const userData = userSheet.getDataRange().getDisplayValues();
-    for (let i = 1; i < userData.length; i++) {
-      const email = (userData[i][1] || '').trim().toLowerCase();
-      const status = (userData[i][3] || 'Active').trim().toLowerCase();
-      if (email && email.includes('@') && status !== 'disabled') {
-        emailSet.add(email);
-      }
-    }
-  }
-
-  emailSet.add('mandarj2412@gmail.com');
-  const recipients = Array.from(emailSet);
-
+  const recipients = getAllRecipientEmails_();
   if (recipients.length === 0) {
     return { ok: true, sent: 0, eventsCount: eventsToSend.length, reason: 'No active user emails found.' };
   }
@@ -916,7 +1278,7 @@ function sendDailyEventDigest() {
     </div>
   `).join('');
 
-  const digestHeading = isUpcoming ? "📅 CSF Calendar — Upcoming Events Schedule" : "📅 CSF Calendar — Today's Event Schedule";
+  const digestHeading = isUpcoming ? "📅 MIT ADT Calendar — Upcoming Events Schedule" : "📅 MIT ADT Calendar — Today's Event Schedule";
   const digestSub = isUpcoming ? `Upcoming approved events as of <strong>${todayFormatted}</strong>` : `Events scheduled for <strong>${todayFormatted}</strong>`;
 
   const emailBody = `
@@ -933,12 +1295,12 @@ function sendDailyEventDigest() {
           <p style="font-size:15px;color:#334155;margin-top:0;">Hello team, here is the approved event schedule:</p>
           ${eventsHtml}
           <div style="text-align:center;margin:24px 0 10px;">
-            <a href="https://csf-calender.vercel.app" target="_blank" style="background:#0F172A;color:#FFFFFF;padding:10px 24px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;display:inline-block;">
-              Open CSF Event Portal
+            <a href="${APP_PORTAL_URL}" target="_blank" style="background:#0F172A;color:#FFFFFF;padding:10px 24px;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;display:inline-block;">
+              Open MIT ADT Calendar
             </a>
           </div>
           <div style="margin-top:24px;padding-top:16px;border-top:1px solid #E2E8F0;text-align:center;font-size:12px;color:#94A3B8;">
-            CSF Event Planning &amp; Approval Portal • Official Notification
+            MIT ADT Event Calendar • Daily Schedule Notification
           </div>
         </div>
       </div>
@@ -946,19 +1308,13 @@ function sendDailyEventDigest() {
     </html>
   `;
 
-  const settings = getSettings_();
-  const appTitle = settings.AppTitle || 'CSF Event Portal';
   const subjectPrefix = isUpcoming ? "Upcoming Events Schedule" : "Today's Events";
-  const subject = `[${appTitle}] ${subjectPrefix} (${eventsToSend.length} event(s)) - ${todayFormatted}`;
+  const subject = `[MIT ADT Calendar] ${subjectPrefix} (${eventsToSend.length} event(s)) - ${todayFormatted}`;
 
   let sentCount = 0;
   recipients.forEach(r => {
-    try {
-      MailApp.sendEmail({ to: r, subject: subject, htmlBody: emailBody });
-      sentCount++;
-    } catch (err) {
-      Logger.log(`Failed sending digest to ${r}: ${err.message}`);
-    }
+    const res = sendEmailSafe_(r, subject, emailBody, 'MIT ADT Calendar Digest');
+    if (res.ok) sentCount++;
   });
 
   return {
@@ -969,23 +1325,6 @@ function sendDailyEventDigest() {
   };
 }
 
-function setupDailyNotificationTrigger() {
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(t => {
-    if (t.getHandlerFunction() === 'sendDailyEventDigest') {
-      ScriptApp.deleteTrigger(t);
-    }
-  });
-
-  ScriptApp.newTrigger('sendDailyEventDigest')
-    .timeBased()
-    .everyDays(1)
-    .atHour(8)
-    .create();
-
-  return 'Daily morning notification trigger configured for 8:00 AM.';
-}
-
 function triggerDailyNotificationNow(clientEmail) {
   const email = clientEmail || getCurrentUserEmail_();
   const user = getUserByEmail_(email);
@@ -993,6 +1332,54 @@ function triggerDailyNotificationNow(clientEmail) {
     throw new Error('Access denied: Only an Admin can trigger notification broadcasts.');
   }
   return sendDailyEventDigest();
+}
+
+/**
+ * Diagnostic one-click test function for Google Apps Script editor.
+ * Run this directly inside the Apps Script editor to authorize all scopes and verify mail sending!
+ */
+function testSystemNotifications() {
+  Logger.log('--- Starting Notification & Permission Diagnostic ---');
+  
+  // 1. Triggers
+  const triggerMsg = setupAllTriggers();
+  Logger.log('Triggers: ' + triggerMsg);
+
+  // 2. Recipients
+  const recipients = getAllRecipientEmails_();
+  Logger.log('Discovered Active Recipients (' + recipients.length + '): ' + recipients.join(', '));
+
+  // 3. Direct Test Email to Mandar
+  const testSubject = '✅ [System Verified] MIT ADT Event Notification System is Active';
+  const testHtml = `
+    <div style="font-family:sans-serif;padding:24px;background:#f8fafc;max-width:560px;margin:auto;border-radius:10px;border:1px solid #e2e8f0;">
+      <h2 style="color:#16a34a;margin-top:0;">Notification System Fully Operational!</h2>
+      <p>Hello Mandar,</p>
+      <p>This verification email confirms that:</p>
+      <ul>
+        <li>Google Apps Script Mail permissions are fully authorized.</li>
+        <li>Automated 12-Hour reminder hourly trigger is active.</li>
+        <li>Daily 8:00 AM event schedule digest trigger is active.</li>
+        <li>Approval broadcasts are wired to <a href="${APP_PORTAL_URL}">${APP_PORTAL_URL}</a>.</li>
+      </ul>
+      <p style="color:#64748b;font-size:12px;margin-bottom:0;">Dispatched on ${new Date().toLocaleString()}</p>
+    </div>
+  `;
+  
+  const mailRes = sendEmailSafe_('mandarj2412@gmail.com', testSubject, testHtml, 'MIT ADT System Test');
+  Logger.log('Test email result: ' + JSON.stringify(mailRes));
+
+  // 4. Run 12-hour reminder scan
+  const reminderScan = check12HourReminders();
+  Logger.log('12-Hour reminder scan result: ' + JSON.stringify(reminderScan));
+
+  return {
+    ok: true,
+    triggers: triggerMsg,
+    recipients: recipients,
+    testEmail: mailRes,
+    reminderScan: reminderScan
+  };
 }
 
 function getCommentsForEvent_(eventId) {
@@ -1054,24 +1441,50 @@ function clean_(v) {
   return String(v == null ? '' : v).trim();
 }
 
+/**
+ * Supports both 12-hour AM/PM (e.g. "04:51 AM", "11:21 PM") and 24-hour (e.g. "14:30")
+ */
 function minutes_(t) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(clean_(t));
-  if (!m) return null;
-  const h = +m[1];
-  const n = +m[2];
-  return h >= 0 && h < 24 && n >= 0 && n < 60 ? h * 60 + n : null;
+  const s = clean_(t).trim();
+  // 12-hour format with AM/PM
+  const m12 = /^(\d{1,2}):(\d{2})\s*(am|pm)$/i.exec(s);
+  if (m12) {
+    let h = parseInt(m12[1], 10);
+    const n = parseInt(m12[2], 10);
+    const mer = m12[3].toLowerCase();
+    if (mer === 'pm' && h < 12) h += 12;
+    if (mer === 'am' && h === 12) h = 0;
+    return h * 60 + n;
+  }
+  // 24-hour format
+  const m24 = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (m24) {
+    const h = parseInt(m24[1], 10);
+    const n = parseInt(m24[2], 10);
+    return h >= 0 && h < 24 && n >= 0 && n < 60 ? h * 60 + n : null;
+  }
+  return null;
 }
 
 function parseDateOnly_(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(clean_(s));
-  if (!m) throw new Error('Invalid date format (expected YYYY-MM-DD).');
-  return new Date(+m[1], +m[2] - 1, +m[3]);
+  const cleanStr = clean_(s);
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(cleanStr);
+  if (m) {
+    return new Date(+m[1], +m[2] - 1, +m[3]);
+  }
+  const d = new Date(cleanStr);
+  if (!isNaN(d.getTime())) return d;
+  throw new Error('Invalid date format (expected YYYY-MM-DD).');
 }
 
 function combineDateTime_(d, t) {
   const x = d instanceof Date ? new Date(d) : parseDateOnly_(String(d));
   const m = minutes_(t);
-  x.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  if (m !== null) {
+    x.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  } else {
+    x.setHours(9, 0, 0, 0);
+  }
   return x;
 }
 
